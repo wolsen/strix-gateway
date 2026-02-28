@@ -280,7 +280,7 @@ class TestEnsurePool:
         # Make _bdev_exists return False and _lvstore_exists return False
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False), \
              patch("apollo_gateway.spdk.ensure._lvstore_exists", return_value=False):
-            ensure_pool(client, _pool())
+            ensure_pool(client, _pool(), "test-sub")
 
         calls = [c[0][0] for c in client.call.call_args_list]
         assert "bdev_malloc_create" in calls
@@ -290,14 +290,14 @@ class TestEnsurePool:
         client = MagicMock(spec=SPDKClient)
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=True), \
              patch("apollo_gateway.spdk.ensure._lvstore_exists", return_value=True):
-            ensure_pool(client, _pool())
+            ensure_pool(client, _pool(), "test-sub")
         client.call.assert_not_called()
 
     def test_aio_file_creates_bdev_and_lvstore(self):
         client = MagicMock(spec=SPDKClient)
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False), \
              patch("apollo_gateway.spdk.ensure._lvstore_exists", return_value=False):
-            ensure_pool(client, _pool(backend_type="aio_file", aio_path="/dev/sdb"))
+            ensure_pool(client, _pool(backend_type="aio_file", aio_path="/dev/sdb"), "test-sub")
         calls = [c[0][0] for c in client.call.call_args_list]
         assert "bdev_aio_create" in calls
         assert "bdev_lvol_create_lvstore" in calls
@@ -306,25 +306,25 @@ class TestEnsurePool:
         client = MagicMock(spec=SPDKClient)
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False):
             with pytest.raises(ValueError, match="aio_path"):
-                ensure_pool(client, _pool(backend_type="aio_file", aio_path=None))
+                ensure_pool(client, _pool(backend_type="aio_file", aio_path=None), "test-sub")
 
     def test_malloc_missing_size_mb_raises(self):
         client = MagicMock(spec=SPDKClient)
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False):
             with pytest.raises(ValueError, match="size_mb"):
-                ensure_pool(client, _pool(backend_type="malloc", size_mb=None))
+                ensure_pool(client, _pool(backend_type="malloc", size_mb=None), "test-sub")
 
     def test_unknown_backend_raises(self):
         client = MagicMock(spec=SPDKClient)
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False):
             with pytest.raises(ValueError, match="Unknown backend"):
-                ensure_pool(client, _pool(backend_type="unknown"))
+                ensure_pool(client, _pool(backend_type="unknown"), "test-sub")
 
     def test_lvstore_skipped_when_exists(self):
         client = MagicMock(spec=SPDKClient)
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False), \
              patch("apollo_gateway.spdk.ensure._lvstore_exists", return_value=True):
-            ensure_pool(client, _pool())
+            ensure_pool(client, _pool(), "test-sub")
         calls = [c[0][0] for c in client.call.call_args_list]
         assert "bdev_malloc_create" in calls
         assert "bdev_lvol_create_lvstore" not in calls
@@ -334,19 +334,19 @@ class TestEnsureLvol:
     def test_creates_when_absent(self):
         client = MagicMock(spec=SPDKClient)
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False):
-            name = ensure_lvol(client, _volume(vol_id="abc"), "mypool")
-        assert name == "mypool/apollo-vol-abc"
+            name = ensure_lvol(client, _volume(vol_id="abc"), "mypool", "test-sub")
+        assert name == "test-sub.mypool/apollo-vol-abc"
         client.call.assert_called_once_with("bdev_lvol_create", {
             "lvol_name": "apollo-vol-abc",
             "size_in_mib": 512,
-            "lvs_name": "mypool",
+            "lvs_name": "test-sub.mypool",
         })
 
     def test_skips_when_exists(self):
         client = MagicMock(spec=SPDKClient)
         with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=True):
-            name = ensure_lvol(client, _volume(vol_id="abc"), "mypool")
-        assert name == "mypool/apollo-vol-abc"
+            name = ensure_lvol(client, _volume(vol_id="abc"), "mypool", "test-sub")
+        assert name == "test-sub.mypool/apollo-vol-abc"
         client.call.assert_not_called()
 
 
@@ -399,7 +399,11 @@ class TestEnsureNvmefExport:
              patch("apollo_gateway.spdk.ensure.nvmf_rpc.create_subsystem") as mock_create, \
              patch("apollo_gateway.spdk.ensure.nvmf_rpc.add_listener") as mock_listener:
             ensure_nvmef_export(client, ec, _settings())
-        mock_create.assert_called_once_with(client, ec.target_nqn)
+        mock_create.assert_called_once_with(
+            client, ec.target_nqn,
+            model_number="Apollo Gateway",
+            serial_number="APOLLO0001",
+        )
         mock_listener.assert_called_once()
 
     def test_skips_when_subsystem_exists(self):

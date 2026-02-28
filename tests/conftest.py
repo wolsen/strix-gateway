@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from apollo_gateway.core.db import Base, init_db, get_session_factory
-from apollo_gateway.main import app
+from apollo_gateway.main import app, _ensure_default_subsystem
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -29,6 +29,7 @@ async def client(mock_spdk):
     """An httpx AsyncClient wired to the FastAPI app with in-memory DB."""
     # Re-initialise with an in-memory DB for each test
     await init_db(TEST_DATABASE_URL)
+    await _ensure_default_subsystem(get_session_factory())
 
     app.state.spdk_client = mock_spdk
 

@@ -152,6 +152,8 @@ class InvocationRecord:
     stderr_len: int                  # bytes written to stderr
     error: Optional[str] = field(default=None)
     # ^ set for pre-dispatch rejections (no command, auth failure, etc.)
+    subsystem_name: Optional[str] = field(default=None)
+    # ^ which virtual subsystem handled this command
 
 
 # ---------------------------------------------------------------------------

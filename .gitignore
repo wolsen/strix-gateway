@@ -3,3 +3,4 @@
 .venv
 **/*.pyc
 *.snap
+apollo_gateway.db

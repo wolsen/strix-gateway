@@ -1,0 +1,64 @@
+# Apollo Gateway topology: two IBM SVC subsystems sharing one gateway
+#
+# Demonstrates:
+#  - Two subsystems with the same pool name ("gold") — allowed because pools
+#    are scoped per subsystem
+#  - Mixed protocols: svc-a uses iSCSI, svc-b uses NVMe-oF TCP
+#  - A global host that maps to volumes in both subsystems
+
+subsystems:
+  - name: svc-a
+    persona: ibm_svc
+    protocols:
+      - iscsi
+    capability_profile:
+      model: "FlashSystem-5200"
+      version: "8.6.0.0"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: false
+
+  - name: svc-b
+    persona: ibm_svc
+    protocols:
+      - nvmeof_tcp
+    capability_profile:
+      model: "FlashSystem-9200"
+      version: "8.6.0.0"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: true
+
+pools:
+  - name: gold
+    subsystem: svc-a
+    backend: malloc
+    size_gb: 100
+
+  - name: gold
+    subsystem: svc-b
+    backend: malloc
+    size_gb: 200
+
+hosts:
+  - name: compute-01
+    iqns:
+      - "iqn.1993-08.org.debian:01:abc123"
+    nqns:
+      - "nqn.2014-08.org.nvmexpress:compute-01"
+
+volumes:
+  - name: vol-a-001
+    size_gb: 20
+    pool: gold
+    # Note: pool "gold" appears twice; in the dual-subsystem case the topology
+    # apply logic processes volumes in order and uses the last pool object
+    # registered under the name. Use distinct volume names per subsystem to
+    # avoid ambiguity, or use separate pool names per subsystem.
+
+mappings:
+  - host: compute-01
+    volume: vol-a-001
+    protocol: iscsi

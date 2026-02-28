@@ -3,6 +3,13 @@
 
 Each function checks whether the resource already exists in SPDK before
 attempting creation, making them safe to call on repeated reconcile passes.
+
+SPDK naming conventions (v1 — subsystem-scoped):
+  - Backing bdev:   apollo-pool-{pool.id}
+  - Lvol store:     {subsystem_name}.{pool_name}
+  - Lvol bdev:      {subsystem_name}.{pool_name}/apollo-vol-{volume_id}
+  - iSCSI IQN:      {prefix}:{subsystem_name}:{export_container_id}
+  - NVMe NQN:       {prefix}:{subsystem_name}:{export_container_id}
 """
 
 from __future__ import annotations
@@ -44,6 +51,20 @@ def allocate_nsid(used: list[int]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# SPDK naming helpers
+# ---------------------------------------------------------------------------
+
+def _lvstore_name(subsystem_name: str, pool_name: str) -> str:
+    """Lvol store name: '{subsystem_name}.{pool_name}'."""
+    return f"{subsystem_name}.{pool_name}"
+
+
+def _lvol_bdev_name(subsystem_name: str, pool_name: str, volume_id: str) -> str:
+    """Full SPDK bdev name for an lvol: '{lvstore}/apollo-vol-{volume_id}'."""
+    return f"{_lvstore_name(subsystem_name, pool_name)}/apollo-vol-{volume_id}"
+
+
+# ---------------------------------------------------------------------------
 # Pool (bdev + lvstore)
 # ---------------------------------------------------------------------------
 
@@ -63,11 +84,22 @@ def _lvstore_exists(client: SPDKClient, lvs_name: str) -> bool:
         return False
 
 
-def ensure_pool(client: SPDKClient, pool: Pool) -> None:
-    """Ensure backing bdev and lvol store exist for *pool*."""
+def ensure_pool(client: SPDKClient, pool: Pool, subsystem_name: str) -> None:
+    """Ensure backing bdev and lvol store exist for *pool*.
+
+    Parameters
+    ----------
+    client:
+        Connected :class:`~apollo_gateway.spdk.rpc.SPDKClient`.
+    pool:
+        ORM :class:`~apollo_gateway.core.db.Pool` instance.
+    subsystem_name:
+        Name of the owning subsystem (used in lvol store naming).
+    """
     from apollo_gateway.core.models import PoolBackendType
 
     backing_bdev = f"apollo-pool-{pool.id}"
+    lvs_name = _lvstore_name(subsystem_name, pool.name)
 
     if not _bdev_exists(client, backing_bdev):
         if pool.backend_type == PoolBackendType.malloc:
@@ -95,35 +127,52 @@ def ensure_pool(client: SPDKClient, pool: Pool) -> None:
     else:
         logger.debug("Backing bdev %s already exists", backing_bdev)
 
-    if not _lvstore_exists(client, pool.name):
-        logger.info("Creating lvstore %s on bdev %s", pool.name, backing_bdev)
+    if not _lvstore_exists(client, lvs_name):
+        logger.info("Creating lvstore %s on bdev %s", lvs_name, backing_bdev)
         client.call("bdev_lvol_create_lvstore", {
             "bdev_name": backing_bdev,
-            "lvs_name": pool.name,
+            "lvs_name": lvs_name,
         })
     else:
-        logger.debug("lvstore %s already exists", pool.name)
+        logger.debug("lvstore %s already exists", lvs_name)
 
 
 # ---------------------------------------------------------------------------
 # Volume (lvol)
 # ---------------------------------------------------------------------------
 
-def _lvol_bdev_name(pool_name: str, volume_id: str) -> str:
-    return f"{pool_name}/apollo-vol-{volume_id}"
+def ensure_lvol(
+    client: SPDKClient,
+    volume: Volume,
+    pool_name: str,
+    subsystem_name: str,
+) -> str:
+    """Ensure the lvol for *volume* exists. Returns full bdev name.
 
-
-def ensure_lvol(client: SPDKClient, volume: Volume, pool_name: str) -> str:
-    """Ensure the lvol for *volume* exists. Returns full bdev name."""
+    Parameters
+    ----------
+    client:
+        Connected :class:`~apollo_gateway.spdk.rpc.SPDKClient`.
+    volume:
+        ORM :class:`~apollo_gateway.core.db.Volume` instance.
+    pool_name:
+        Name of the pool (used for lvstore lookup).
+    subsystem_name:
+        Name of the owning subsystem (used in bdev naming).
+    """
     lvol_name = f"apollo-vol-{volume.id}"
-    full_name = _lvol_bdev_name(pool_name, volume.id)
+    full_name = _lvol_bdev_name(subsystem_name, pool_name, volume.id)
+    lvs_name = _lvstore_name(subsystem_name, pool_name)
 
     if not _bdev_exists(client, full_name):
-        logger.info("Creating lvol %s in lvstore %s (%d MiB)", lvol_name, pool_name, volume.size_mb)
+        logger.info(
+            "Creating lvol %s in lvstore %s (%d MiB)",
+            lvol_name, lvs_name, volume.size_mb,
+        )
         client.call("bdev_lvol_create", {
             "lvol_name": lvol_name,
             "size_in_mib": volume.size_mb,
-            "lvs_name": pool_name,
+            "lvs_name": lvs_name,
         })
     else:
         logger.debug("lvol %s already exists", full_name)
@@ -167,12 +216,30 @@ def ensure_iscsi_export(client: SPDKClient, ec: ExportContainer, settings: Setti
         logger.debug("iSCSI target %s already exists", ec.target_iqn)
 
 
-def ensure_nvmef_export(client: SPDKClient, ec: ExportContainer, settings: Settings) -> None:
-    """Ensure NVMe-oF TCP transport and subsystem exist for *ec*."""
+def ensure_nvmef_export(
+    client: SPDKClient,
+    ec: ExportContainer,
+    settings: Settings,
+    model_number: str = "Apollo Gateway",
+    serial_number: str = "APOLLO0001",
+) -> None:
+    """Ensure NVMe-oF TCP transport and subsystem exist for *ec*.
+
+    Parameters
+    ----------
+    model_number:
+        NVMe subsystem model string (from capability profile).
+    serial_number:
+        NVMe subsystem serial number string.
+    """
     nvmf_rpc.ensure_transport(client)
 
     if not nvmf_rpc.subsystem_exists(client, ec.target_nqn):
-        nvmf_rpc.create_subsystem(client, ec.target_nqn)
+        nvmf_rpc.create_subsystem(
+            client, ec.target_nqn,
+            model_number=model_number,
+            serial_number=serial_number,
+        )
         nvmf_rpc.add_listener(client, ec.target_nqn, settings.nvmef_portal_ip, settings.nvmef_portal_port)
     else:
         logger.debug("NVMe-oF subsystem %s already exists", ec.target_nqn)

@@ -9,16 +9,15 @@ It returns the text that should be written to stdout (may be empty for
 ``svctask`` commands that succeed silently).  On failure it raises a
 :class:`~apollo_gateway.compat.ibm_svc.errors.SvcError` subclass.
 
-The handlers access the Apollo data layer directly via SQLAlchemy async
-sessions and call SPDK idempotent ensure_* functions via asyncio.to_thread,
-mirroring the logic in ``apollo_gateway.api.v1``.
+All query handlers filter by ``ctx.subsystem_id`` so that two subsystems
+may share pool/volume names without collision.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from sqlalchemy import select
@@ -57,10 +56,18 @@ logger = logging.getLogger("apollo_gateway.compat.ibm_svc")
 
 @dataclass
 class SvcContext:
-    """Execution context passed to every handler."""
+    """Execution context passed to every handler.
+
+    All handlers must filter DB queries by ``subsystem_id`` to provide
+    isolation between subsystems.
+    """
 
     session: AsyncSession
     spdk: SPDKClient
+    subsystem_id: str
+    subsystem_name: str
+    effective_profile: dict = field(default_factory=dict)
+    protocols_enabled: list[str] = field(default_factory=lambda: ["iscsi", "nvmeof_tcp"])
 
 
 # ---------------------------------------------------------------------------
@@ -93,11 +100,14 @@ def _host_iqns(host: Host) -> list[str]:
 # ---------------------------------------------------------------------------
 
 async def _lssystem(ctx: SvcContext, pc: ParsedCommand) -> str:
-    """svcinfo lssystem — static gateway identity."""
+    """svcinfo lssystem — gateway identity with capability profile fields."""
     delim = pc.delim or "!"
+    profile = ctx.effective_profile
+    version = profile.get("version", "8.4.0.0")
+    model = profile.get("model", "apollo-gateway")
     fields = {
         "id": "0",
-        "name": "apollo-gateway",
+        "name": ctx.subsystem_name,
         "location": "local",
         "partnership": "",
         "total_mdisk_capacity": "0.00TB",
@@ -108,7 +118,8 @@ async def _lssystem(ctx: SvcContext, pc: ParsedCommand) -> str:
         "total_used_capacity": "0.00TB",
         "total_overallocation": "0",
         "total_vdisk_capacity": "0.00TB",
-        "code_level": "8.4.0.0 (build 156.8.2209261126000)",
+        "code_level": f"{version} (build 156.8.2209261126000)",
+        "product_name": model,
         "console_IP": "127.0.0.1",
         "id_alias": "0000000000000000",
         "iscsi_auth_method": "none",
@@ -124,7 +135,9 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
     delim = pc.delim or "!"
 
     if name_or_id is not None:
-        result = await session.execute(select(Pool).where(Pool.name == name_or_id))
+        result = await session.execute(
+            select(Pool).where(Pool.name == name_or_id, Pool.subsystem_id == ctx.subsystem_id)
+        )
         pool = result.scalar_one_or_none()
         if pool is None:
             raise SvcNotFoundError(f"mdiskgrp '{name_or_id}'")
@@ -151,8 +164,10 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
         }
         return format_delim(fields, delim)
 
-    # List all pools
-    result = await session.execute(select(Pool))
+    # List pools in this subsystem only
+    result = await session.execute(
+        select(Pool).where(Pool.subsystem_id == ctx.subsystem_id)
+    )
     pools = result.scalars().all()
     rows = [
         {
@@ -179,7 +194,12 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
     delim = pc.delim or "!"
 
     if name_or_id is not None:
-        result = await session.execute(select(Volume).where(Volume.name == name_or_id))
+        result = await session.execute(
+            select(Volume).where(
+                Volume.name == name_or_id,
+                Volume.subsystem_id == ctx.subsystem_id,
+            )
+        )
         volume = result.scalar_one_or_none()
         if volume is None:
             raise SvcNotFoundError(f"vdisk '{name_or_id}'")
@@ -217,8 +237,10 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
         }
         return format_delim(fields, delim)
 
-    # List all volumes
-    result = await session.execute(select(Volume))
+    # List volumes in this subsystem only
+    result = await session.execute(
+        select(Volume).where(Volume.subsystem_id == ctx.subsystem_id)
+    )
     volumes = result.scalars().all()
     rows = []
     for v in volumes:
@@ -248,7 +270,10 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
 
 
 async def _lshost(ctx: SvcContext, pc: ParsedCommand) -> str:
-    """svcinfo lshost [<host_name>] [-delim <d>]"""
+    """svcinfo lshost [<host_name>] [-delim <d>]
+
+    Hosts are global (not subsystem-scoped) per v0 design.
+    """
     session = ctx.session
     name_or_id: Optional[str] = pc.positional[0] if pc.positional else None
     delim = pc.delim or "!"
@@ -270,14 +295,13 @@ async def _lshost(ctx: SvcContext, pc: ParsedCommand) -> str:
             "site_id": "",
             "site_name": "",
         }
-        # Emit one iscsi_name field per port
         for i, iqn in enumerate(iqns):
             fields[f"iscsi_name_{i}"] = iqn
         if not iqns:
             fields["iscsi_name"] = ""
         return format_delim(fields, delim)
 
-    # List all hosts
+    # List all hosts (global)
     result = await session.execute(select(Host))
     hosts = result.scalars().all()
     rows = []
@@ -307,7 +331,10 @@ async def _lshostvdiskmap(ctx: SvcContext, pc: ParsedCommand) -> str:
         raise SvcNotFoundError(f"host '{host_name}'")
 
     maps_result = await session.execute(
-        select(Mapping).where(Mapping.host_id == host.id)
+        select(Mapping).where(
+            Mapping.host_id == host.id,
+            Mapping.subsystem_id == ctx.subsystem_id,
+        )
     )
     mappings = maps_result.scalars().all()
 
@@ -338,13 +365,21 @@ async def _lsvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     vdisk_name = pc.positional[0]
     session = ctx.session
 
-    vol_result = await session.execute(select(Volume).where(Volume.name == vdisk_name))
+    vol_result = await session.execute(
+        select(Volume).where(
+            Volume.name == vdisk_name,
+            Volume.subsystem_id == ctx.subsystem_id,
+        )
+    )
     volume = vol_result.scalar_one_or_none()
     if volume is None:
         raise SvcNotFoundError(f"vdisk '{vdisk_name}'")
 
     maps_result = await session.execute(
-        select(Mapping).where(Mapping.volume_id == volume.id)
+        select(Mapping).where(
+            Mapping.volume_id == volume.id,
+            Mapping.subsystem_id == ctx.subsystem_id,
+        )
     )
     mappings = maps_result.scalars().all()
 
@@ -390,13 +425,23 @@ async def _mkvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
     size_mb = size_num * 1024
     session = ctx.session
 
-    # Check volume name uniqueness
-    dup_result = await session.execute(select(Volume).where(Volume.name == name))
+    # Check volume name uniqueness within this subsystem
+    dup_result = await session.execute(
+        select(Volume).where(
+            Volume.name == name,
+            Volume.subsystem_id == ctx.subsystem_id,
+        )
+    )
     if dup_result.scalar_one_or_none():
         raise SvcAlreadyExistsError(f"vdisk '{name}'")
 
-    # Find pool by name
-    pool_result = await session.execute(select(Pool).where(Pool.name == mdiskgrp))
+    # Find pool by name within this subsystem
+    pool_result = await session.execute(
+        select(Pool).where(
+            Pool.name == mdiskgrp,
+            Pool.subsystem_id == ctx.subsystem_id,
+        )
+    )
     pool = pool_result.scalar_one_or_none()
     if pool is None:
         raise SvcNotFoundError(f"mdiskgrp '{mdiskgrp}'")
@@ -404,6 +449,7 @@ async def _mkvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
     # Create Volume record
     volume = Volume(
         name=name,
+        subsystem_id=ctx.subsystem_id,
         pool_id=pool.id,
         size_mb=size_mb,
         status=VolumeStatus.creating,
@@ -413,7 +459,9 @@ async def _mkvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
 
     # Provision in SPDK
     try:
-        bdev_name = await asyncio.to_thread(ensure_lvol, ctx.spdk, volume, pool.name)
+        bdev_name = await asyncio.to_thread(
+            ensure_lvol, ctx.spdk, volume, pool.name, ctx.subsystem_name
+        )
         volume.bdev_name = bdev_name
         volume.status = VolumeStatus.available
     except Exception as exc:
@@ -433,7 +481,12 @@ async def _rmvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
     vdisk_name = pc.positional[0]
     session = ctx.session
 
-    result = await session.execute(select(Volume).where(Volume.name == vdisk_name))
+    result = await session.execute(
+        select(Volume).where(
+            Volume.name == vdisk_name,
+            Volume.subsystem_id == ctx.subsystem_id,
+        )
+    )
     volume = result.scalar_one_or_none()
     if volume is None:
         raise SvcNotFoundError(f"vdisk '{vdisk_name}'")
@@ -485,7 +538,12 @@ async def _expandvdisksize(ctx: SvcContext, pc: ParsedCommand) -> str:
         raise SvcInvalidArgError(f"only -unit gb is supported (got '{unit}')")
 
     session = ctx.session
-    result = await session.execute(select(Volume).where(Volume.name == vdisk_name))
+    result = await session.execute(
+        select(Volume).where(
+            Volume.name == vdisk_name,
+            Volume.subsystem_id == ctx.subsystem_id,
+        )
+    )
     volume = result.scalar_one_or_none()
     if volume is None:
         raise SvcNotFoundError(f"vdisk '{vdisk_name}'")
@@ -513,7 +571,7 @@ async def _mkhost(ctx: SvcContext, pc: ParsedCommand) -> str:
     name = require_flag(pc, "name")
     session = ctx.session
 
-    # Enforce name uniqueness (REST API doesn't)
+    # Enforce name uniqueness (hosts are global)
     dup_result = await session.execute(select(Host).where(Host.name == name))
     if dup_result.scalar_one_or_none():
         raise SvcAlreadyExistsError(f"host '{name}'")
@@ -569,13 +627,11 @@ async def _addhostport(ctx: SvcContext, pc: ParsedCommand) -> str:
         raise SvcNotFoundError(f"host '{host_name}'")
 
     if iscsiname:
-        # Store comma-separated IQNs; deduplicate
         existing = _host_iqns(host)
         if iscsiname not in existing:
             existing.append(iscsiname)
         host.iqn = ",".join(existing)
     elif fcwwpn:
-        # Store FC WWPNs in nqn field (v0 placeholder; NVMe persona comes later)
         existing_wwpns = [w.strip() for w in (host.nqn or "").split(",") if w.strip()]
         if fcwwpn not in existing_wwpns:
             existing_wwpns.append(fcwwpn)
@@ -594,8 +650,13 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     vdisk_name = pc.positional[0]
     session = ctx.session
 
-    # Locate volume by name
-    vol_result = await session.execute(select(Volume).where(Volume.name == vdisk_name))
+    # Locate volume by name within this subsystem
+    vol_result = await session.execute(
+        select(Volume).where(
+            Volume.name == vdisk_name,
+            Volume.subsystem_id == ctx.subsystem_id,
+        )
+    )
     volume = vol_result.scalar_one_or_none()
     if volume is None:
         raise SvcNotFoundError(f"vdisk '{vdisk_name}'")
@@ -605,17 +666,18 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
             f"vdisk '{vdisk_name}' is not in a mappable state (status: {volume.status})"
         )
 
-    # Locate host by name
+    # Locate host by name (global)
     host_result = await session.execute(select(Host).where(Host.name == host_name))
     host = host_result.scalar_one_or_none()
     if host is None:
         raise SvcNotFoundError(f"host '{host_name}'")
 
-    # Duplicate-mapping guard
+    # Duplicate-mapping guard (within subsystem)
     dup_result = await session.execute(
         select(Mapping).where(
             Mapping.volume_id == volume.id,
             Mapping.host_id == host.id,
+            Mapping.subsystem_id == ctx.subsystem_id,
         )
     )
     if dup_result.scalar_one_or_none():
@@ -623,17 +685,19 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
             f"mapping of vdisk '{vdisk_name}' to host '{host_name}'"
         )
 
-    # Find or create iSCSI ExportContainer for this host
+    # Find or create iSCSI ExportContainer for this host in this subsystem
     ec_result = await session.execute(
         select(ExportContainer).where(
             ExportContainer.protocol == Protocol.iscsi,
             ExportContainer.host_id == host.id,
+            ExportContainer.subsystem_id == ctx.subsystem_id,
         )
     )
     ec = ec_result.scalar_one_or_none()
 
     if ec is None:
         ec = ExportContainer(
+            subsystem_id=ctx.subsystem_id,
             protocol=Protocol.iscsi,
             host_id=host.id,
             portal_ip=_settings.iscsi_portal_ip,
@@ -641,7 +705,7 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
         )
         session.add(ec)
         await session.flush()  # get ec.id
-        ec.target_iqn = f"{_settings.iqn_prefix}:{ec.id}"
+        ec.target_iqn = f"{_settings.iqn_prefix}:{ctx.subsystem_name}:{ec.id}"
         await session.flush()
 
         try:
@@ -663,6 +727,7 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
 
     # Persist Mapping record
     mapping = Mapping(
+        subsystem_id=ctx.subsystem_id,
         volume_id=volume.id,
         host_id=host.id,
         export_container_id=ec.id,
@@ -697,7 +762,12 @@ async def _rmvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     vdisk_name = pc.positional[0]
     session = ctx.session
 
-    vol_result = await session.execute(select(Volume).where(Volume.name == vdisk_name))
+    vol_result = await session.execute(
+        select(Volume).where(
+            Volume.name == vdisk_name,
+            Volume.subsystem_id == ctx.subsystem_id,
+        )
+    )
     volume = vol_result.scalar_one_or_none()
     if volume is None:
         raise SvcNotFoundError(f"vdisk '{vdisk_name}'")
@@ -711,6 +781,7 @@ async def _rmvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
         select(Mapping).where(
             Mapping.volume_id == volume.id,
             Mapping.host_id == host.id,
+            Mapping.subsystem_id == ctx.subsystem_id,
         )
     )
     mapping = map_result.scalar_one_or_none()

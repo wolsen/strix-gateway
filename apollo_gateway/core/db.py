@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -26,15 +27,40 @@ class Base(DeclarativeBase):
 # ORM Models
 # ---------------------------------------------------------------------------
 
-class Pool(Base):
-    __tablename__ = "pools"
+class Subsystem(Base):
+    __tablename__ = "subsystems"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    persona: Mapped[str] = mapped_column(String, nullable=False, default="generic")
+    # JSON-encoded list of strings, e.g. '["iscsi","nvmeof_tcp"]'
+    protocols_enabled: Mapped[str] = mapped_column(
+        String, nullable=False, default='["iscsi","nvmeof_tcp"]'
+    )
+    # JSON-encoded dict of capability profile overrides (merged with persona defaults at query time)
+    capability_profile: Mapped[str] = mapped_column(String, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    pools: Mapped[list[Pool]] = relationship("Pool", back_populates="subsystem", lazy="selectin")
+
+
+class Pool(Base):
+    __tablename__ = "pools"
+    __table_args__ = (UniqueConstraint("subsystem_id", "name", name="uq_pool_subsystem_name"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    subsystem_id: Mapped[str] = mapped_column(ForeignKey("subsystems.id"), nullable=False)
     backend_type: Mapped[str] = mapped_column(String, nullable=False)
     size_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     aio_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
+    subsystem: Mapped[Subsystem] = relationship("Subsystem", back_populates="pools", lazy="selectin")
     volumes: Mapped[list[Volume]] = relationship("Volume", back_populates="pool", lazy="selectin")
 
 
@@ -43,6 +69,7 @@ class Volume(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String, nullable=False)
+    subsystem_id: Mapped[str] = mapped_column(ForeignKey("subsystems.id"), nullable=False)
     pool_id: Mapped[str] = mapped_column(ForeignKey("pools.id"), nullable=False)
     size_mb: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="creating")
@@ -67,6 +94,7 @@ class ExportContainer(Base):
     __tablename__ = "export_containers"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    subsystem_id: Mapped[str] = mapped_column(ForeignKey("subsystems.id"), nullable=False)
     protocol: Mapped[str] = mapped_column(String, nullable=False)
     host_id: Mapped[str] = mapped_column(ForeignKey("hosts.id"), nullable=False)
     target_iqn: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -81,6 +109,7 @@ class Mapping(Base):
     __tablename__ = "mappings"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    subsystem_id: Mapped[str] = mapped_column(ForeignKey("subsystems.id"), nullable=False)
     volume_id: Mapped[str] = mapped_column(ForeignKey("volumes.id"), nullable=False)
     host_id: Mapped[str] = mapped_column(ForeignKey("hosts.id"), nullable=False)
     export_container_id: Mapped[str] = mapped_column(ForeignKey("export_containers.id"), nullable=False)

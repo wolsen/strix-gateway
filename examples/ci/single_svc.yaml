@@ -1,0 +1,43 @@
+# Apollo Gateway topology: single IBM SVC subsystem
+#
+# Usage:
+#   python -m apollo_gateway.topology.load examples/ci/single_svc.yaml
+#   or programmatically via apply_topology()
+
+subsystems:
+  - name: svc-a
+    persona: ibm_svc
+    protocols:
+      - iscsi
+    capability_profile:
+      model: "FlashSystem-5200"
+      version: "8.6.0.0"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: false
+
+pools:
+  - name: gold
+    subsystem: svc-a
+    backend: malloc
+    size_gb: 100
+
+hosts:
+  - name: compute-01
+    iqns:
+      - "iqn.1993-08.org.debian:01:abc123"
+
+volumes:
+  - name: cinder-vol-001
+    size_gb: 20
+    pool: gold
+
+  - name: cinder-vol-002
+    size_gb: 40
+    pool: gold
+
+mappings:
+  - host: compute-01
+    volume: cinder-vol-001
+    protocol: iscsi

@@ -47,14 +47,19 @@ def subsystem_exists(client: SPDKClient, nqn: str) -> bool:
     return any(s.get("nqn") == nqn for s in get_subsystems(client))
 
 
-def create_subsystem(client: SPDKClient, nqn: str) -> None:
+def create_subsystem(
+    client: SPDKClient,
+    nqn: str,
+    model_number: str = "Apollo Gateway",
+    serial_number: str = "APOLLO0001",
+) -> None:
     """Create an NVMe-oF subsystem that allows any host."""
-    logger.info("Creating NVMe-oF subsystem %s", nqn)
+    logger.info("Creating NVMe-oF subsystem %s (model=%s)", nqn, model_number)
     client.call("nvmf_create_subsystem", {
         "nqn": nqn,
         "allow_any_host": True,
-        "serial_number": "APOLLO0001",
-        "model_number": "Apollo Gateway",
+        "serial_number": serial_number,
+        "model_number": model_number,
     })
 
 

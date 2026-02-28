@@ -10,11 +10,13 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from starlette.requests import Request
 
 from apollo_gateway.api import admin, v1
+from apollo_gateway.api import subsystems as subsystems_api
 from apollo_gateway.config import settings
-from apollo_gateway.core.db import get_session_factory, init_db
+from apollo_gateway.core.db import Subsystem, get_session_factory, init_db
 from apollo_gateway.core.faults import FaultInjectionError
 from apollo_gateway.core.reconcile import reconcile
 from apollo_gateway.spdk.rpc import SPDKClient
@@ -26,10 +28,31 @@ logging.basicConfig(
 logger = logging.getLogger("apollo_gateway.main")
 
 
+async def _ensure_default_subsystem(session_factory) -> None:
+    """Create the 'default' subsystem if it does not exist."""
+    async with session_factory() as session:
+        result = await session.execute(select(Subsystem).where(Subsystem.name == "default"))
+        if result.scalar_one_or_none() is None:
+            default = Subsystem(
+                name="default",
+                persona="generic",
+                protocols_enabled='["iscsi","nvmeof_tcp"]',
+                capability_profile="{}",
+            )
+            session.add(default)
+            await session.commit()
+            logger.info("Created default subsystem")
+        else:
+            logger.debug("Default subsystem already exists")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Apollo Gateway starting — initialising database")
     await init_db(settings.database_url)
+
+    logger.info("Ensuring default subsystem")
+    await _ensure_default_subsystem(get_session_factory())
 
     logger.info("Connecting to SPDK at %s", settings.spdk_socket_path)
     spdk_client = SPDKClient(settings.spdk_socket_path)
@@ -57,6 +80,7 @@ app = FastAPI(
 
 app.include_router(v1.router)
 app.include_router(admin.router)
+app.include_router(subsystems_api.router)
 
 
 @app.exception_handler(FaultInjectionError)

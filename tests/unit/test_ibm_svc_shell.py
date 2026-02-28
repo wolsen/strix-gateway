@@ -27,7 +27,7 @@ Flow validated
 from __future__ import annotations
 
 import io
-import sys
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -37,8 +37,18 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from apollo_gateway.compat.ibm_svc.handlers import SvcContext
 from apollo_gateway.compat.ibm_svc.shell import dispatch
-from apollo_gateway.core.db import Base, Host, Mapping, Pool, Volume, init_db, get_session_factory
+from apollo_gateway.core.db import (
+    Base,
+    Host,
+    Mapping,
+    Pool,
+    Subsystem,
+    Volume,
+    init_db,
+    get_session_factory,
+)
 from apollo_gateway.core.models import VolumeStatus
+from apollo_gateway.core.personas import merge_profile
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -63,10 +73,31 @@ def mock_spdk():
 
 
 @pytest_asyncio.fixture
-async def pool(session_factory):
+async def subsystem(session_factory):
+    """Pre-existing 'default' Subsystem."""
+    async with session_factory() as s:
+        sub = Subsystem(
+            name="default",
+            persona="generic",
+            protocols_enabled='["iscsi","nvmeof_tcp"]',
+            capability_profile="{}",
+        )
+        s.add(sub)
+        await s.commit()
+        await s.refresh(sub)
+        return sub
+
+
+@pytest_asyncio.fixture
+async def pool(session_factory, subsystem):
     """Pre-existing Pool named 'pool0' (required by mkvdisk tests)."""
     async with session_factory() as s:
-        p = Pool(name="pool0", backend_type="malloc", size_mb=10240)
+        p = Pool(
+            name="pool0",
+            backend_type="malloc",
+            size_mb=10240,
+            subsystem_id=subsystem.id,
+        )
         s.add(p)
         await s.commit()
         await s.refresh(p)
@@ -74,29 +105,30 @@ async def pool(session_factory):
 
 
 @pytest_asyncio.fixture
-async def ctx(session_factory, mock_spdk, pool):
+async def ctx(session_factory, mock_spdk, pool, subsystem):
     """SvcContext wired to the test DB and mock SPDK client."""
+    profile = merge_profile(subsystem.persona, json.loads(subsystem.capability_profile))
     async with session_factory() as session:
-        yield SvcContext(session=session, spdk=mock_spdk)
+        yield SvcContext(
+            session=session,
+            spdk=mock_spdk,
+            subsystem_id=subsystem.id,
+            subsystem_name=subsystem.name,
+            effective_profile=profile.model_dump(),
+            protocols_enabled=json.loads(subsystem.protocols_enabled),
+        )
 
 
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
 
-async def run(cmd: str, ctx: SvcContext, *, capture_stdout: bool = True) -> tuple[int, str]:
+async def run(cmd: str, ctx: SvcContext) -> tuple[int, str]:
     """Run *cmd* through the dispatcher and return (exit_code, captured_stdout)."""
-    if capture_stdout:
-        buf = io.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = buf
-        try:
-            code = await dispatch(cmd, ctx)
-        finally:
-            sys.stdout = old_stdout
-        return code, buf.getvalue()
-    code = await dispatch(cmd, ctx)
-    return code, ""
+    buf = io.StringIO()
+    err = io.StringIO()
+    code = await dispatch(cmd, ctx, stdout=buf, stderr=err)
+    return code, buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -127,13 +159,13 @@ class TestLsSystem:
     async def test_lssystem_returns_name_field(self, ctx):
         code, out = await run("svcinfo lssystem", ctx)
         assert code == 0
-        assert "apollo-gateway" in out
-        assert "name!" in out
+        # ctx.subsystem_name == "default"
+        assert "name!default" in out
 
     async def test_lssystem_custom_delim(self, ctx):
         code, out = await run("svcinfo lssystem -delim :", ctx)
         assert code == 0
-        assert "name:apollo-gateway" in out
+        assert "name:default" in out
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +200,6 @@ class TestVdiskLifecycle:
             "svctask mkvdisk -name vol1 -size 1 -unit gb -mdiskgrp pool0", ctx
         )
         assert code == 1
-        assert "already exists" in out.lower() or True  # stderr, not stdout
 
     async def test_lsvdisk_list(self, ctx):
         await run("svctask mkvdisk -name vol1 -size 2 -unit gb -mdiskgrp pool0", ctx)

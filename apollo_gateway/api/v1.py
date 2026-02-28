@@ -4,15 +4,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Annotated
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apollo_gateway.config import settings
-from apollo_gateway.core.db import ExportContainer, Host, Mapping, Pool, Volume, get_session
+from apollo_gateway.core.capabilities import assert_protocol_allowed
+from apollo_gateway.core.db import ExportContainer, Host, Mapping, Pool, Subsystem, Volume, get_session
 from apollo_gateway.core.faults import FaultInjectionError, check_fault
 from apollo_gateway.core.models import (
     ConnectionInfoIscsi,
@@ -55,6 +57,31 @@ def _spdk(request: Request):
     return request.app.state.spdk_client
 
 
+async def _resolve_default_subsystem(db: AsyncSession) -> Subsystem:
+    """Return the 'default' subsystem. Raises 500 if it doesn't exist."""
+    result = await db.execute(select(Subsystem).where(Subsystem.name == "default"))
+    sub = result.scalar_one_or_none()
+    if sub is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Default subsystem not found. Gateway may still be initialising.",
+        )
+    return sub
+
+
+async def _resolve_subsystem(db: AsyncSession, name_or_id: str) -> Subsystem:
+    """Resolve a subsystem by name or UUID. Raises 404 if not found."""
+    result = await db.execute(select(Subsystem).where(Subsystem.id == name_or_id))
+    sub = result.scalar_one_or_none()
+    if sub is not None:
+        return sub
+    result = await db.execute(select(Subsystem).where(Subsystem.name == name_or_id))
+    sub = result.scalar_one_or_none()
+    if sub is None:
+        raise HTTPException(status_code=404, detail=f"Subsystem '{name_or_id}' not found")
+    return sub
+
+
 # ---------------------------------------------------------------------------
 # Pools
 # ---------------------------------------------------------------------------
@@ -69,13 +96,25 @@ async def create_pool(body: PoolCreate, request: Request, db: DbSession):
     if body.backend_type == PoolBackendType.aio_file and not body.aio_path:
         raise HTTPException(status_code=400, detail="aio_path required for aio_file backend")
 
-    # Check for duplicate name
-    existing = await db.execute(select(Pool).where(Pool.name == body.name))
+    # Resolve subsystem
+    if body.subsystem:
+        sub = await _resolve_subsystem(db, body.subsystem)
+    else:
+        sub = await _resolve_default_subsystem(db)
+
+    # Check for duplicate name within this subsystem
+    existing = await db.execute(
+        select(Pool).where(Pool.subsystem_id == sub.id, Pool.name == body.name)
+    )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail=f"Pool '{body.name}' already exists")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Pool '{body.name}' already exists in subsystem '{sub.name}'",
+        )
 
     pool = Pool(
         name=body.name,
+        subsystem_id=sub.id,
         backend_type=body.backend_type,
         size_mb=body.size_mb,
         aio_path=body.aio_path,
@@ -85,7 +124,7 @@ async def create_pool(body: PoolCreate, request: Request, db: DbSession):
 
     client = _spdk(request)
     try:
-        await asyncio.to_thread(ensure_pool, client, pool)
+        await asyncio.to_thread(ensure_pool, client, pool, sub.name)
     except Exception as exc:
         logger.error("Failed to create pool %s in SPDK: %s", pool.id, exc)
         await db.rollback()
@@ -97,8 +136,15 @@ async def create_pool(body: PoolCreate, request: Request, db: DbSession):
 
 
 @router.get("/pools", response_model=list[PoolResponse])
-async def list_pools(db: DbSession):
-    result = await db.execute(select(Pool))
+async def list_pools(
+    db: DbSession,
+    subsystem: Optional[str] = Query(default=None),
+):
+    stmt = select(Pool)
+    if subsystem:
+        sub = await _resolve_subsystem(db, subsystem)
+        stmt = stmt.where(Pool.subsystem_id == sub.id)
+    result = await db.execute(stmt)
     return [PoolResponse.model_validate(p) for p in result.scalars().all()]
 
 
@@ -115,8 +161,12 @@ async def create_volume(body: VolumeCreate, request: Request, db: DbSession):
     if pool is None:
         raise HTTPException(status_code=404, detail=f"Pool {body.pool_id} not found")
 
+    # Inherit subsystem from pool
+    sub = pool.subsystem
+
     volume = Volume(
         name=body.name,
+        subsystem_id=sub.id,
         pool_id=body.pool_id,
         size_mb=body.size_mb,
         status=VolumeStatus.creating,
@@ -126,7 +176,7 @@ async def create_volume(body: VolumeCreate, request: Request, db: DbSession):
 
     client = _spdk(request)
     try:
-        bdev_name = await asyncio.to_thread(ensure_lvol, client, volume, pool.name)
+        bdev_name = await asyncio.to_thread(ensure_lvol, client, volume, pool.name, sub.name)
         volume.bdev_name = bdev_name
         volume.status = VolumeStatus.available
     except Exception as exc:
@@ -138,6 +188,19 @@ async def create_volume(body: VolumeCreate, request: Request, db: DbSession):
     await db.commit()
     await db.refresh(volume)
     return VolumeResponse.model_validate(volume)
+
+
+@router.get("/volumes", response_model=list[VolumeResponse])
+async def list_volumes(
+    db: DbSession,
+    subsystem: Optional[str] = Query(default=None),
+):
+    stmt = select(Volume)
+    if subsystem:
+        sub = await _resolve_subsystem(db, subsystem)
+        stmt = stmt.where(Volume.subsystem_id == sub.id)
+    result = await db.execute(stmt)
+    return [VolumeResponse.model_validate(v) for v in result.scalars().all()]
 
 
 @router.get("/volumes/{volume_id}", response_model=VolumeResponse)
@@ -254,11 +317,21 @@ async def create_mapping(body: MappingCreate, request: Request, db: DbSession):
     if host is None:
         raise HTTPException(status_code=404, detail=f"Host {body.host_id} not found")
 
-    # Find or create ExportContainer for (protocol, host_id)
+    # Resolve subsystem from volume
+    sub_result = await db.execute(select(Subsystem).where(Subsystem.id == volume.subsystem_id))
+    sub = sub_result.scalar_one_or_none()
+    if sub is None:
+        raise HTTPException(status_code=500, detail="Volume has no associated subsystem")
+
+    # Validate protocol is allowed by subsystem
+    assert_protocol_allowed(sub, body.protocol.value)
+
+    # Find or create ExportContainer for (protocol, host_id, subsystem_id)
     ec_result = await db.execute(
         select(ExportContainer).where(
             ExportContainer.protocol == body.protocol,
             ExportContainer.host_id == body.host_id,
+            ExportContainer.subsystem_id == sub.id,
         )
     )
     ec = ec_result.scalar_one_or_none()
@@ -274,6 +347,7 @@ async def create_mapping(body: MappingCreate, request: Request, db: DbSession):
             portal_port = settings.nvmef_portal_port
 
         ec = ExportContainer(
+            subsystem_id=sub.id,
             protocol=body.protocol,
             host_id=body.host_id,
             portal_ip=portal_ip,
@@ -282,11 +356,11 @@ async def create_mapping(body: MappingCreate, request: Request, db: DbSession):
         db.add(ec)
         await db.flush()  # get ec.id
 
-        # Assign IQN/NQN using the export container's id
+        # Assign IQN/NQN incorporating subsystem name for disambiguation
         if body.protocol == Protocol.iscsi:
-            ec.target_iqn = f"{settings.iqn_prefix}:{ec.id}"
+            ec.target_iqn = f"{settings.iqn_prefix}:{sub.name}:{ec.id}"
         else:
-            ec.target_nqn = f"{settings.nqn_prefix}:{ec.id}"
+            ec.target_nqn = f"{settings.nqn_prefix}:{sub.name}:{ec.id}"
         await db.flush()
 
         # Create SPDK target/subsystem
@@ -294,7 +368,13 @@ async def create_mapping(body: MappingCreate, request: Request, db: DbSession):
             if body.protocol == Protocol.iscsi:
                 await asyncio.to_thread(ensure_iscsi_export, client, ec, settings)
             else:
-                await asyncio.to_thread(ensure_nvmef_export, client, ec, settings)
+                profile_dict = json.loads(sub.capability_profile)
+                from apollo_gateway.core.personas import merge_profile
+                profile = merge_profile(sub.persona, profile_dict)
+                await asyncio.to_thread(
+                    ensure_nvmef_export, client, ec, settings,
+                    profile.model, f"APOLLO-{sub.name[:8].upper()}"
+                )
         except Exception as exc:
             logger.error("Failed to create export container %s: %s", ec.id, exc)
             await db.rollback()
@@ -316,6 +396,7 @@ async def create_mapping(body: MappingCreate, request: Request, db: DbSession):
         lun_id = None
 
     mapping = Mapping(
+        subsystem_id=sub.id,
         volume_id=body.volume_id,
         host_id=body.host_id,
         export_container_id=ec.id,
@@ -362,9 +443,6 @@ async def delete_mapping(mapping_id: str, request: Request, db: DbSession):
             await asyncio.to_thread(
                 iscsi_rpc.delete_target_node, client, ec.target_iqn
             )
-            # Recreate without this LUN if other mappings remain
-            # For v0, deleting the whole target and recreating is simplest;
-            # a future version could use iscsi_target_node_remove_lun when available.
         else:
             await asyncio.to_thread(nvmf_rpc.remove_namespace, client, ec.target_nqn, mapping.ns_id)
     except Exception as exc:
@@ -373,7 +451,7 @@ async def delete_mapping(mapping_id: str, request: Request, db: DbSession):
 
     await db.delete(mapping)
 
-    # If no more mappings on this EC, remove the volume's in_use status
+    # If no more mappings on this volume, reset volume status
     remaining = await db.execute(
         select(Mapping).where(Mapping.volume_id == volume.id)
     )
@@ -381,6 +459,19 @@ async def delete_mapping(mapping_id: str, request: Request, db: DbSession):
         volume.status = VolumeStatus.available
 
     await db.commit()
+
+
+@router.get("/mappings", response_model=list[MappingResponse])
+async def list_mappings(
+    db: DbSession,
+    subsystem: Optional[str] = Query(default=None),
+):
+    stmt = select(Mapping)
+    if subsystem:
+        sub = await _resolve_subsystem(db, subsystem)
+        stmt = stmt.where(Mapping.subsystem_id == sub.id)
+    result = await db.execute(stmt)
+    return [MappingResponse.model_validate(m) for m in result.scalars().all()]
 
 
 @router.get("/mappings/{mapping_id}/connection-info")
