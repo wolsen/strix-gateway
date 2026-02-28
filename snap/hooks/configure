@@ -1,0 +1,46 @@
+#!/bin/bash
+# snap/hooks/configure
+#
+# Runs whenever `snap set apollo-gateway key=value` is called.
+# Reads operator-supplied config values via snapctl, writes them to
+# $SNAP_DATA/config/apollo.env, then restarts the gateway service so the
+# new settings take effect.
+#
+# Supported keys and their APOLLO_* environment variable equivalents:
+#   iscsi-portal-ip    → APOLLO_ISCSI_PORTAL_IP
+#   iscsi-portal-port  → APOLLO_ISCSI_PORTAL_PORT
+#   nvmef-portal-ip    → APOLLO_NVMEF_PORTAL_IP
+#   nvmef-portal-port  → APOLLO_NVMEF_PORTAL_PORT
+#   iqn-prefix         → APOLLO_IQN_PREFIX
+#   nqn-prefix         → APOLLO_NQN_PREFIX
+
+set -euo pipefail
+
+mkdir -p "${SNAP_DATA}/config"
+
+env_file="${SNAP_DATA}/config/apollo.env"
+
+# Build the env file from currently-set snap config keys.
+# Only write lines for keys that have been explicitly set by the operator;
+# unset keys fall back to defaults in apollo-gateway-wrapper.
+{
+  for key in \
+      iscsi-portal-ip \
+      iscsi-portal-port \
+      nvmef-portal-ip \
+      nvmef-portal-port \
+      iqn-prefix \
+      nqn-prefix
+  do
+    val=$(snapctl get "${key}" 2>/dev/null || true)
+    if [ -n "${val}" ]; then
+      # Convert dash-separated key to UPPER_SNAKE_CASE env var name.
+      env_key="APOLLO_$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
+      echo "${env_key}=${val}"
+    fi
+  done
+} > "${env_file}"
+
+# Restart the gateway to pick up the new environment.
+# spdk-tgt does not need a restart for portal config changes.
+snapctl restart apollo-gateway.apollo-gateway 2>/dev/null || true

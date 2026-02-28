@@ -1,0 +1,23 @@
+#!/bin/bash
+# snap/local/spdk-tgt-wrapper
+#
+# Wrapper for the spdk_tgt daemon.
+#
+# Creates the runtime socket directory under $SNAP_COMMON/run (writable, shared
+# between both snap services) then execs spdk_tgt, directing it to write its
+# JSON-RPC Unix socket there.
+#
+# The host OS must have hugepages pre-allocated before this service starts, e.g.:
+#   echo 1024 > /proc/sys/vm/nr_hugepages
+# or persistently via /etc/sysctl.d/90-hugepages.conf:
+#   vm.nr_hugepages = 1024
+#
+# hugetlbfs is assumed to be mounted at /dev/hugepages (standard on Ubuntu).
+
+set -euo pipefail
+
+SOCKET_DIR="${SNAP_COMMON}/run"
+mkdir -p "${SOCKET_DIR}"
+
+exec "${SNAP}/usr/bin/spdk_tgt" --rpc-socket "${SOCKET_DIR}"/spdk.sock \
+   --no-huge -s 1G

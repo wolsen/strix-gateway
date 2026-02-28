@@ -1,0 +1,36 @@
+#!/bin/bash
+# snap/local/apollo-gateway-wrapper
+#
+# Wrapper for the Apollo Gateway FastAPI service.
+#
+# Applies default snap-appropriate paths for the SPDK socket and SQLite
+# database, then overlays any operator-supplied overrides written by the
+# configure hook before execing uvicorn.
+#
+# Default paths (relative to snap runtime dirs):
+#   APOLLO_SPDK_SOCKET_PATH  $SNAP_COMMON/run/spdk.sock   (matches spdk-tgt)
+#   APOLLO_DATABASE_URL      sqlite+aiosqlite:///<$SNAP_DATA>/apollo_gateway.db
+#
+# All other APOLLO_* settings fall back to the defaults compiled into
+# apollo_gateway/config.py unless overridden via `snap set`.
+
+set -euo pipefail
+
+# Ensure persistent data directory exists.
+mkdir -p "${SNAP_DATA}"
+
+# Load operator-supplied overrides from the configure hook (if any).
+# The file is absent on first boot — that is expected and fine.
+if [ -f "${SNAP_DATA}/config/apollo.env" ]; then
+  # shellcheck disable=SC1090
+  . "${SNAP_DATA}/config/apollo.env"
+fi
+
+# Apply snap-specific defaults that differ from upstream config.py defaults.
+# Using parameter expansion so operator env-file values take precedence.
+export APOLLO_SPDK_SOCKET_PATH="${APOLLO_SPDK_SOCKET_PATH:-${SNAP_COMMON}/run/spdk.sock}"
+export APOLLO_DATABASE_URL="${APOLLO_DATABASE_URL:-sqlite+aiosqlite:///${SNAP_DATA}/apollo_gateway.db}"
+
+exec "${SNAP}/bin/python3" -m uvicorn apollo_gateway.main:app \
+    --host 0.0.0.0 \
+    --port "${APOLLO_HTTP_PORT:-8080}"

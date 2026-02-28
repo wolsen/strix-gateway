@@ -1,0 +1,204 @@
+name: apollo-gateway
+base: core24
+version: '0.1.0'
+summary: Virtual storage device control-plane backed by SPDK
+description: |
+  Apollo Gateway provides a REST API for managing virtual storage devices
+  using SPDK (Storage Performance Development Kit) with iSCSI and NVMe-oF
+  TCP export protocols.
+
+  Two systemd-managed services are included:
+    apollo-gateway.spdk-tgt     — SPDK target daemon
+    apollo-gateway.apollo-gateway — FastAPI control-plane (port 8080)
+
+  Runtime paths
+    Socket:   $SNAP_COMMON/run/spdk.sock
+    Database: $SNAP_DATA/apollo_gateway.db
+
+  Operator configuration via snap set:
+    snap set apollo-gateway iscsi-portal-ip=0.0.0.0
+    snap set apollo-gateway iscsi-portal-port=3260
+    snap set apollo-gateway nvmef-portal-ip=0.0.0.0
+    snap set apollo-gateway nvmef-portal-port=4420
+    snap set apollo-gateway iqn-prefix=iqn.2026-02.lunacysystems.apollo
+    snap set apollo-gateway nqn-prefix=nqn.2026-02.io.lunacysystems:apollo
+
+grade: devel
+confinement: strict
+
+platforms:
+  amd64:
+
+# ---------------------------------------------------------------------------
+# Filesystem layout
+# ---------------------------------------------------------------------------
+layout:
+  /var/log:
+    bind: $SNAP_COMMON/log
+
+# ---------------------------------------------------------------------------
+# Interface plugs
+# ---------------------------------------------------------------------------
+plugs:
+  # Custom system-files plug for hugepage filesystem access.
+  # hugetlbfs is expected to be pre-mounted by the host OS at /dev/hugepages
+  # (standard on Ubuntu). To connect after install:
+  #   sudo snap connect apollo-gateway:hugepages :system-files
+  #
+  # NOTE: this plug requires explicit operator connection or Store auto-connect
+  # approval because system-files write access to /dev/hugepages is restricted.
+  hugepages:
+    interface: system-files
+    read:
+      - /dev/hugepages
+      - /sys/kernel/mm/hugepages
+      - /proc/sys/vm/nr_hugepages
+      - /proc/sys/vm/nr_overcommit_hugepages
+
+# ---------------------------------------------------------------------------
+# Applications / services
+# ---------------------------------------------------------------------------
+apps:
+  spdk-tgt:
+    command: bin/spdk-tgt-wrapper
+    daemon: simple
+    restart-condition: on-failure
+    plugs:
+      # Outbound and inbound network (iSCSI data-path, NVMe-oF data-path)
+      - network
+      - network-bind
+      # ARP manipulation and interface-level ops needed for iSCSI portal management
+      - network-control
+      # rw access to block-special files (/dev/sd*, /dev/nvme*) for AIO bdev backend
+      - block-devices
+      # Read /sys/bus, /sys/class for NVMe PCIe device enumeration
+      - hardware-observe
+      # CAP_IPC_LOCK — allows mlock(2)/mmap(MAP_LOCKED) of hugepage memory
+      - physical-memory-control
+      # hugetlbfs read access (see plug declaration above)
+      - hugepages
+
+  apollo-gateway:
+    command: bin/apollo-gateway-wrapper
+    daemon: simple
+    restart-condition: on-failure
+    # Wait for SPDK socket to be created before starting
+    after: [spdk-tgt]
+    plugs:
+      - network
+      - network-bind
+
+  ibm-svc-shell:
+    command: bin/apollo-svc-shell
+    plugs:
+      - network
+      - network-bind
+
+# ---------------------------------------------------------------------------
+# Parts
+# ---------------------------------------------------------------------------
+parts:
+  # ── SPDK target daemon ──────────────────────────────────────────────────
+  spdk:
+    plugin: nil
+    # Pin to a specific release to avoid silent breakage from upstream changes.
+    # The docker-compose.yml used ghcr.io/spdk/spdk:latest; update this tag
+    # when you want to track a new SPDK release.
+    source: https://github.com/spdk/spdk
+    source-type: git
+    source-branch: v26.01.x
+    source-submodules:
+      - dpdk
+      - intel-ipsec-mb
+      - isa-l
+      - isa-l-crypto
+      - libvfio-user
+      - ocf
+      - xnvme
+
+    build-packages:
+      - build-essential
+      - nasm               # SPDK/DPDK assembler (requires >= 2.14; core24 ships 2.15)
+      - python3
+      - python3-pip
+      - libssl-dev
+      - libaio-dev
+      - libnuma-dev
+      - libcunit1-dev
+      - libaio-dev
+      - libssl-dev
+      - libjson-c-dev
+      - libcmocka-dev
+      - libiscsi-dev
+      - libkeyutils-dev
+      - libfuse3-dev
+      - libcunit1-dev
+      - libncurses-dev
+      - uuid-dev
+      - meson
+      - ninja-build
+      - pkg-config
+      - git
+      - libfuse3-dev
+      - gcc
+      - g++
+      - make
+      - patchelf
+      - procps
+      - python3-configshell-fb
+      - python3-pexpect
+      - python3-tabulate
+      - autoconf
+      - automake
+      - libtool
+      - help2man
+      - python3-grpcio
+      - python3-jinja2
+      - python3-pyelftools
+
+    # Runtime shared libraries that spdk_tgt links against.
+    # Ubuntu 24.04 renamed several lib packages (libaio1 → libaio1t64, etc.)
+    stage-packages:
+      - libaio1t64
+      - libnuma1
+      - libssl3t64
+      - libuuid1
+      - libkeyutils1
+      - libfuse3-3
+
+    override-build: |
+      # Minimal feature set: bdev + lvol + iSCSI target + NVMe-oF TCP.
+      # Strips vhost, virtio, RDMA, FUSE, Intel ISA-L and all test binaries
+      # to reduce build time and snap size.
+        #--without-nvme-cuse \
+        #--without-rdma \
+      ./configure \
+        --without-vhost \
+        --without-virtio \
+        --without-fsdev \
+        --without-shared \
+        --disable-tests \
+        --disable-unit-tests
+      make -j"$(nproc)"
+      install -D -m 755 build/bin/spdk_tgt \
+        "${SNAPCRAFT_PART_INSTALL}/usr/bin/spdk_tgt"
+
+  # ── Apollo Gateway Python service ───────────────────────────────────────
+  apollo-gateway:
+    plugin: uv
+    source: .
+    build-snaps:
+      - astral-uv
+    # pyproject.toml (hatchling) is auto-detected; all declared runtime deps
+    # (fastapi, uvicorn[standard], sqlalchemy, aiosqlite, pydantic,
+    # pydantic-settings) are resolved and installed into the snap venv.
+    # Python 3.12 from core24 satisfies requires-python = ">=3.11".
+
+  # ── Wrapper scripts ─────────────────────────────────────────────────────
+  wrappers:
+    plugin: dump
+    source: snap/local/
+    organize:
+      spdk-tgt-wrapper: bin/spdk-tgt-wrapper
+      apollo-gateway-wrapper: bin/apollo-gateway-wrapper
+      apollo-svc-shell: bin/apollo-svc-shell
