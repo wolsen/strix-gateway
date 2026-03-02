@@ -35,8 +35,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from apollo_gateway.compat.ibm_svc.handlers import SvcContext
-from apollo_gateway.compat.ibm_svc.shell import dispatch
+from apollo_gateway.compat.ibm_svc.handlers import SvcContext, dispatch
 from apollo_gateway.core.db import (
     Base,
     Host,

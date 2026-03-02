@@ -16,6 +16,7 @@ from apollo_gateway.core.models import (
     CapabilitiesView,
     PoolResponse,
     SubsystemCreate,
+    SubsystemUpdate,
     SubsystemView,
 )
 from apollo_gateway.core.personas import merge_profile
@@ -97,6 +98,25 @@ async def list_subsystems(db: DbSession):
 @router.get("/{subsystem_id}", response_model=SubsystemView)
 async def get_subsystem(subsystem_id: str, db: DbSession):
     sub = await _resolve_subsystem(db, subsystem_id)
+    return _subsystem_to_view(sub)
+
+
+@router.patch("/{subsystem_id}", response_model=SubsystemView)
+async def update_subsystem(subsystem_id: str, body: SubsystemUpdate, db: DbSession):
+    sub = await _resolve_subsystem(db, subsystem_id)
+    if body.persona is not None:
+        sub.persona = body.persona
+    if body.protocols_enabled is not None:
+        valid_protocols = {"iscsi", "nvmeof_tcp"}
+        bad = [p for p in body.protocols_enabled if p not in valid_protocols]
+        if bad:
+            raise HTTPException(status_code=400, detail=f"Unknown protocols: {bad}. Valid: {sorted(valid_protocols)}")
+        sub.protocols_enabled = json.dumps(body.protocols_enabled)
+    if body.capability_profile is not None:
+        sub.capability_profile = json.dumps(body.capability_profile)
+    await db.commit()
+    await db.refresh(sub)
+    logger.info("Updated subsystem '%s'", sub.name)
     return _subsystem_to_view(sub)
 
 

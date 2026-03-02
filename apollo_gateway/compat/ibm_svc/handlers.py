@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TextIO
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,6 +80,21 @@ def _mb_to_gb_str(size_mb: int) -> str:
     return f"{size_mb / 1024:.2f}GB"
 
 
+def _mb_to_tb_str(size_mb: int) -> str:
+    """Convert MiB to a ``X.XXTB`` string as IBM SVC displays it."""
+    return f"{size_mb / (1024 * 1024):.2f}TB"
+
+
+def _mb_to_mb_str(size_mb: int) -> str:
+    """Convert MiB to a ``X.XXMB`` string as IBM SVC displays it."""
+    return f"{size_mb:.2f}MB"
+
+
+def _feature(ctx: SvcContext, name: str, default: bool = False) -> bool:
+    """Read a boolean feature flag from the effective capability profile."""
+    return ctx.effective_profile.get("features", {}).get(name, default)
+
+
 def _volume_status(status: str) -> str:
     """Map Apollo VolumeStatus → IBM SVC online/offline."""
     return "online" if status in (
@@ -102,22 +118,34 @@ def _host_iqns(host: Host) -> list[str]:
 async def _lssystem(ctx: SvcContext, pc: ParsedCommand) -> str:
     """svcinfo lssystem — gateway identity with capability profile fields."""
     delim = pc.delim or "!"
+    session = ctx.session
     profile = ctx.effective_profile
     version = profile.get("version", "8.4.0.0")
     model = profile.get("model", "apollo-gateway")
+
+    # Aggregate capacity from pools/volumes in this subsystem
+    result = await session.execute(
+        select(Pool).where(Pool.subsystem_id == ctx.subsystem_id)
+    )
+    pools = result.scalars().all()
+    total_capacity_mb = sum(p.size_mb or 0 for p in pools)
+    allocated_mb = sum(v.size_mb for p in pools for v in p.volumes)
+    free_mb = total_capacity_mb - allocated_mb
+    overallocation = str(int(allocated_mb / total_capacity_mb * 100)) if total_capacity_mb > 0 else "0"
+
     fields = {
         "id": "0",
         "name": ctx.subsystem_name,
         "location": "local",
         "partnership": "",
-        "total_mdisk_capacity": "0.00TB",
-        "space_in_mdisk_grps": "0.00TB",
-        "space_allocated_to_vdisks": "0.00TB",
-        "total_free_space": "0.00TB",
-        "total_vdiskcopy_capacity": "0.00TB",
-        "total_used_capacity": "0.00TB",
-        "total_overallocation": "0",
-        "total_vdisk_capacity": "0.00TB",
+        "total_mdisk_capacity": _mb_to_tb_str(total_capacity_mb),
+        "space_in_mdisk_grps": _mb_to_tb_str(total_capacity_mb),
+        "space_allocated_to_vdisks": _mb_to_tb_str(allocated_mb),
+        "total_free_space": _mb_to_tb_str(free_mb),
+        "total_vdiskcopy_capacity": _mb_to_tb_str(allocated_mb),
+        "total_used_capacity": _mb_to_tb_str(allocated_mb),
+        "total_overallocation": overallocation,
+        "total_vdisk_capacity": _mb_to_tb_str(allocated_mb),
         "code_level": f"{version} (build 156.8.2209261126000)",
         "product_name": model,
         "console_IP": "127.0.0.1",
@@ -134,6 +162,9 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
     name_or_id: Optional[str] = pc.positional[0] if pc.positional else None
     delim = pc.delim or "!"
 
+    compression = _feature(ctx, "compression")
+    easy_tier = _feature(ctx, "easy_tier")
+
     if name_or_id is not None:
         result = await session.execute(
             select(Pool).where(Pool.name == name_or_id, Pool.subsystem_id == ctx.subsystem_id)
@@ -141,26 +172,30 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
         pool = result.scalar_one_or_none()
         if pool is None:
             raise SvcNotFoundError(f"mdiskgrp '{name_or_id}'")
+        pool_cap_mb = pool.size_mb or 0
+        used_mb = sum(v.size_mb for v in pool.volumes)
+        free_mb = pool_cap_mb - used_mb
+        overallocation = str(int(used_mb / pool_cap_mb * 100)) if pool_cap_mb > 0 else "0"
         fields = {
             "id": pool.id,
             "name": pool.name,
             "status": "online",
             "mdisk_count": "1",
             "vdisk_count": str(len(pool.volumes)),
-            "capacity": _mb_to_gb_str(pool.size_mb or 0),
+            "capacity": _mb_to_gb_str(pool_cap_mb),
             "extent_size": "256",
-            "free_capacity": _mb_to_gb_str(pool.size_mb or 0),
-            "virtual_capacity": "0.00GB",
-            "used_capacity": "0.00GB",
-            "real_capacity": "0.00GB",
-            "overallocation": "0",
+            "free_capacity": _mb_to_gb_str(free_mb),
+            "virtual_capacity": _mb_to_gb_str(used_mb),
+            "used_capacity": _mb_to_gb_str(used_mb),
+            "real_capacity": _mb_to_gb_str(used_mb),
+            "overallocation": overallocation,
             "warning": "0",
-            "easy_tier": "off",
-            "easy_tier_status": "balanced",
-            "compression_active": "no",
-            "compression_virtual_capacity": "0.00MB",
-            "compression_compressed_capacity": "0.00MB",
-            "compression_uncompressed_capacity": "0.00MB",
+            "easy_tier": "on" if easy_tier else "off",
+            "easy_tier_status": "balanced" if easy_tier else "inactive",
+            "compression_active": "yes" if compression else "no",
+            "compression_virtual_capacity": _mb_to_mb_str(used_mb) if compression else "0.00MB",
+            "compression_compressed_capacity": _mb_to_mb_str(used_mb) if compression else "0.00MB",
+            "compression_uncompressed_capacity": _mb_to_mb_str(used_mb) if compression else "0.00MB",
         }
         return format_delim(fields, delim)
 
@@ -169,21 +204,23 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
         select(Pool).where(Pool.subsystem_id == ctx.subsystem_id)
     )
     pools = result.scalars().all()
-    rows = [
-        {
+    rows = []
+    for p in pools:
+        pool_cap_mb = p.size_mb or 0
+        used_mb = sum(v.size_mb for v in p.volumes)
+        free_mb = pool_cap_mb - used_mb
+        rows.append({
             "id": p.id,
             "name": p.name,
             "status": "online",
             "mdisk_count": "1",
             "vdisk_count": str(len(p.volumes)),
-            "capacity": _mb_to_gb_str(p.size_mb or 0),
+            "capacity": _mb_to_gb_str(pool_cap_mb),
             "extent_size": "256",
-            "free_capacity": _mb_to_gb_str(p.size_mb or 0),
-            "virtual_capacity": "0.00GB",
-            "compression_active": "no",
-        }
-        for p in pools
-    ]
+            "free_capacity": _mb_to_gb_str(free_mb),
+            "virtual_capacity": _mb_to_gb_str(used_mb),
+            "compression_active": "yes" if compression else "no",
+        })
     return format_table(rows)
 
 
@@ -836,3 +873,68 @@ SVCTASK_HANDLERS: dict[str, object] = {
     "mkvdiskhostmap": _mkvdiskhostmap,
     "rmvdiskhostmap": _rmvdiskhostmap,
 }
+
+
+# ---------------------------------------------------------------------------
+# Dispatcher
+# ---------------------------------------------------------------------------
+
+async def dispatch(
+    cmd_str: str,
+    ctx: SvcContext,
+    stdout: Optional[TextIO] = None,
+    stderr: Optional[TextIO] = None,
+) -> int:
+    """Parse *cmd_str*, call the matching handler, write output, return exit code.
+
+    Parameters
+    ----------
+    cmd_str:
+        Raw SVC command string (e.g. ``"svcinfo lssystem"``).
+    ctx:
+        Pre-initialised :class:`SvcContext` carrying a live
+        ``AsyncSession`` and ``SPDKClient``.
+    stdout:
+        Stream for normal output.  Defaults to ``sys.stdout``.
+    stderr:
+        Stream for error output.  Defaults to ``sys.stderr``.
+
+    Returns
+    -------
+    int
+        Exit code: ``0`` on success, ``1`` on any error.
+    """
+    from apollo_gateway.compat.ibm_svc.parse import parse_ssh_command
+
+    out = stdout if stdout is not None else sys.stdout
+    err = stderr if stderr is not None else sys.stderr
+
+    try:
+        pc = parse_ssh_command(cmd_str)
+    except SvcError as exc:
+        print(str(exc), file=err)
+        return exc.exit_code
+
+    if pc.verb == "svcinfo":
+        table = SVCINFO_HANDLERS
+    else:
+        table = SVCTASK_HANDLERS
+
+    handler = table.get(pc.subcommand)
+    if handler is None:
+        exc = SvcUnknownCommandError(f"{pc.verb} {pc.subcommand}")
+        print(str(exc), file=err)
+        return exc.exit_code
+
+    try:
+        output = await handler(ctx, pc)  # type: ignore[operator]
+        if output:
+            print(output, file=out)
+        return 0
+    except SvcError as exc:
+        print(str(exc), file=err)
+        return exc.exit_code
+    except Exception as exc:
+        logger.exception("Unhandled error in handler %s %s", pc.verb, pc.subcommand)
+        print(f"Internal error: {exc}", file=err)
+        return 1

@@ -3,8 +3,7 @@
 
 Validates that:
   - Two SvcContexts for different subsystems see only their own pools / volumes
-  - run_svc_command() returns (stdout, stderr, exit_code) correctly
-  - run_svc_command() returns exit_code=1 for an unknown subsystem
+  - POST /v1/svc/run returns a valid response for a known subsystem
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from apollo_gateway.compat.ibm_svc.handlers import SvcContext
-from apollo_gateway.compat.ibm_svc.shell import dispatch
+from apollo_gateway.compat.ibm_svc.handlers import dispatch
 from apollo_gateway.core.db import Pool, Subsystem, Volume, init_db, get_session_factory
 from apollo_gateway.core.models import VolumeStatus
 from apollo_gateway.core.personas import merge_profile
@@ -183,47 +182,27 @@ class TestSubsystemIsolation:
 
 
 # ---------------------------------------------------------------------------
-# run_svc_command (programmatic helper)
+# REST endpoint tests
 # ---------------------------------------------------------------------------
 
-class TestRunSvcCommand:
-    async def test_unknown_subsystem_returns_exit_1(self, session_factory):
-        # run_svc_command is synchronous, but since we're in an async test we
-        # test the async internals directly.
-        # Patch init_db to be a no-op so we don't reinitialize the test engine.
-        from unittest.mock import AsyncMock, MagicMock, patch
-        from apollo_gateway.compat.ibm_svc.shell import _run_svc_command_async
+class TestSvcRunEndpoint:
+    async def test_svcinfo_lssystem_returns_200(self, client):
+        """POST /v1/svc/run with a valid command against the default subsystem."""
+        resp = await client.post(
+            "/v1/svc/run",
+            json={"subsystem": "default", "command": "svcinfo lssystem"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "stdout" in data
+        assert "stderr" in data
+        assert "exit_code" in data
+        assert data["exit_code"] == 0
 
-        mock_settings = MagicMock()
-        mock_settings.database_url = TEST_DATABASE_URL
-
-        async def _noop_init_db(url):
-            pass
-
-        with patch("apollo_gateway.core.db.init_db", side_effect=_noop_init_db), \
-             patch("apollo_gateway.spdk.rpc.SPDKClient", return_value=MagicMock()):
-            stdout, stderr, code = await _run_svc_command_async(
-                "svcinfo lssystem", "does-not-exist", mock_settings
-            )
-        assert code == 1
-        assert "not found" in stderr
-
-    async def test_known_subsystem_returns_exit_0(self, session_factory):
-        from unittest.mock import AsyncMock, MagicMock, patch
-        from apollo_gateway.compat.ibm_svc.shell import _run_svc_command_async
-
-        await _make_subsystem(session_factory, "test-sub")
-
-        mock_settings = MagicMock()
-        mock_settings.database_url = TEST_DATABASE_URL
-
-        async def _noop_init_db(url):
-            pass
-
-        with patch("apollo_gateway.core.db.init_db", side_effect=_noop_init_db), \
-             patch("apollo_gateway.spdk.rpc.SPDKClient", return_value=MagicMock()):
-            stdout, stderr, code = await _run_svc_command_async(
-                "svcinfo lssystem", "test-sub", mock_settings
-            )
-        assert code == 0
-        assert "name!test-sub" in stdout
+    async def test_unknown_subsystem_returns_404(self, client):
+        """POST /v1/svc/run with a nonexistent subsystem returns 404."""
+        resp = await client.post(
+            "/v1/svc/run",
+            json={"subsystem": "does-not-exist", "command": "svcinfo lssystem"},
+        )
+        assert resp.status_code == 404

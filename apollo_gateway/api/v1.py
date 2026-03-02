@@ -21,11 +21,14 @@ from apollo_gateway.core.models import (
     ConnectionInfoNvmeof,
     HostCreate,
     HostResponse,
+    HostUpdate,
     MappingCreate,
     MappingResponse,
     PoolCreate,
     PoolResponse,
     Protocol,
+    SvcRunRequest,
+    SvcRunResponse,
     VolumeCreate,
     VolumeExtend,
     VolumeResponse,
@@ -295,6 +298,47 @@ async def list_hosts(db: DbSession):
     return [HostResponse.model_validate(h) for h in result.scalars().all()]
 
 
+@router.get("/hosts/{host_id}", response_model=HostResponse)
+async def get_host(host_id: str, db: DbSession):
+    result = await db.execute(select(Host).where(Host.id == host_id))
+    host = result.scalar_one_or_none()
+    if host is None:
+        raise HTTPException(status_code=404, detail=f"Host {host_id} not found")
+    return HostResponse.model_validate(host)
+
+
+@router.patch("/hosts/{host_id}", response_model=HostResponse)
+async def update_host(host_id: str, body: HostUpdate, db: DbSession):
+    result = await db.execute(select(Host).where(Host.id == host_id))
+    host = result.scalar_one_or_none()
+    if host is None:
+        raise HTTPException(status_code=404, detail=f"Host {host_id} not found")
+    if body.iqn is not None:
+        host.iqn = body.iqn
+    if body.nqn is not None:
+        host.nqn = body.nqn
+    await db.commit()
+    await db.refresh(host)
+    return HostResponse.model_validate(host)
+
+
+@router.delete("/hosts/{host_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_host(host_id: str, db: DbSession):
+    result = await db.execute(select(Host).where(Host.id == host_id))
+    host = result.scalar_one_or_none()
+    if host is None:
+        raise HTTPException(status_code=404, detail=f"Host {host_id} not found")
+    # Refuse if active mappings exist
+    maps_result = await db.execute(select(Mapping).where(Mapping.host_id == host_id))
+    if maps_result.scalars().first():
+        raise HTTPException(
+            status_code=409,
+            detail=f"Host {host_id} has active mappings; remove them first",
+        )
+    await db.delete(host)
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Mappings
 # ---------------------------------------------------------------------------
@@ -507,3 +551,37 @@ async def get_connection_info(mapping_id: str, db: DbSession):
                 "access_mode": "rw",
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# SVC façade run
+# ---------------------------------------------------------------------------
+
+@router.post("/svc/run", response_model=SvcRunResponse)
+async def svc_run(body: SvcRunRequest, request: Request, db: DbSession):
+    """Execute an IBM SVC façade command against a named subsystem."""
+    import io
+    import json as _json
+
+    from apollo_gateway.compat.ibm_svc.handlers import SvcContext, dispatch
+    from apollo_gateway.core.personas import merge_profile
+
+    await check_fault("svc_run")
+    sub = await _resolve_subsystem(db, body.subsystem)
+    spdk = _spdk(request)
+    profile = merge_profile(sub.persona, _json.loads(sub.capability_profile))
+    ctx = SvcContext(
+        session=db,
+        spdk=spdk,
+        subsystem_id=sub.id,
+        subsystem_name=sub.name,
+        effective_profile=profile.model_dump(),
+        protocols_enabled=_json.loads(sub.protocols_enabled),
+    )
+    out_buf, err_buf = io.StringIO(), io.StringIO()
+    exit_code = await dispatch(body.command, ctx, stdout=out_buf, stderr=err_buf)
+    return SvcRunResponse(
+        stdout=out_buf.getvalue(),
+        stderr=err_buf.getvalue(),
+        exit_code=exit_code,
+    )

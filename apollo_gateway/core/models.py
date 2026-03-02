@@ -126,6 +126,11 @@ class HostCreate(BaseModel):
     nqn: Optional[str] = None  # NVMe-oF host NQN
 
 
+class HostUpdate(BaseModel):
+    iqn: Optional[str] = None
+    nqn: Optional[str] = None
+
+
 class HostResponse(BaseModel):
     id: str
     name: str
@@ -184,3 +189,22 @@ class FaultCreate(BaseModel):
 class DelayCreate(BaseModel):
     operation: str
     delay_seconds: float
+
+
+# ---------------------------------------------------------------------------
+# SVC run (REST API façade)
+# ---------------------------------------------------------------------------
+
+class SvcRunRequest(BaseModel):
+    subsystem: str
+    command: str
+    # SSH audit metadata — populated by ForceCommand, absent in CLI use
+    remote_user: str | None = None
+    remote_addr: str | None = None
+    remote_port: str | None = None
+
+
+class SvcRunResponse(BaseModel):
+    stdout: str
+    stderr: str
+    exit_code: int

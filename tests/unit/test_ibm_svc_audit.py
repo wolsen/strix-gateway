@@ -9,7 +9,7 @@ Coverage
 * _CountingWriter     — byte counting accuracy
 * SvcAuditLogger      — file creation, JSON Lines format, human-readable format,
                          graceful degradation on bad log dir
-* _audited_dispatch() — end-to-end: dispatch produces a JSON Lines record with
+* audited_dispatch() — end-to-end: dispatch produces a JSON Lines record with
                          correct fields and the exit_code / stdout_len values
 """
 
@@ -35,8 +35,8 @@ from apollo_gateway.compat.ibm_svc.audit import (
     parse_ssh_connection,
     redact_argv,
 )
+from apollo_gateway.compat.ibm_svc.audit import audited_dispatch
 from apollo_gateway.compat.ibm_svc.handlers import SvcContext
-from apollo_gateway.compat.ibm_svc.shell import _audited_dispatch
 from apollo_gateway.core.db import Pool, Subsystem, init_db, get_session_factory
 from apollo_gateway.core.personas import merge_profile
 
@@ -405,7 +405,7 @@ class TestSvcAuditLogger:
 
 
 # ---------------------------------------------------------------------------
-# _audited_dispatch integration
+# audited_dispatch integration
 # ---------------------------------------------------------------------------
 
 import json as _json
@@ -455,7 +455,7 @@ class TestAuditedDispatch:
         audit = SvcAuditLogger()
         audit.configure(log_dir=tmp_path)
 
-        exit_code = await _audited_dispatch(
+        exit_code = await audited_dispatch(
             "svcinfo lssystem",
             ctx,
             audit,
@@ -486,7 +486,7 @@ class TestAuditedDispatch:
         audit = SvcAuditLogger()
         audit.configure(log_dir=tmp_path)
 
-        exit_code = await _audited_dispatch(
+        exit_code = await audited_dispatch(
             "svcinfo lsvdisk nosuchvolume",
             ctx,
             audit,
@@ -507,7 +507,7 @@ class TestAuditedDispatch:
         real_stdout = sys.stdout
         sys.stdout = buf
         try:
-            exit_code = await _audited_dispatch("svcinfo lssystem", ctx, audit)
+            exit_code = await audited_dispatch("svcinfo lssystem", ctx, audit)
         finally:
             sys.stdout = real_stdout
 
@@ -521,7 +521,7 @@ class TestAuditedDispatch:
         audit = SvcAuditLogger()
         audit.configure(log_dir=tmp_path)
 
-        await _audited_dispatch(
+        await audited_dispatch(
             "svctask mkvdisk -name vol1 -size 1 -unit gb -mdiskgrp pool0 -password hunter2",
             ctx,
             audit,
@@ -538,7 +538,7 @@ class TestAuditedDispatch:
         audit = SvcAuditLogger()
         audit.configure(log_dir=tmp_path)
 
-        await _audited_dispatch("svcinfo lssystem", ctx, audit,
+        await audited_dispatch("svcinfo lssystem", ctx, audit,
                                 remote_addr="127.0.0.1", remote_port="9999")
 
         text = (tmp_path / SvcAuditLogger.TEXT_NAME).read_text()
@@ -551,7 +551,7 @@ class TestAuditedDispatch:
         audit = SvcAuditLogger()
         audit.configure(log_dir=tmp_path)
 
-        await _audited_dispatch("svcinfo lssystem", ctx, audit)
+        await audited_dispatch("svcinfo lssystem", ctx, audit)
 
         obj = json.loads((tmp_path / SvcAuditLogger.JSONL_NAME).read_text().strip())
         import uuid
@@ -564,7 +564,7 @@ class TestAuditedDispatch:
         audit = SvcAuditLogger()
         audit.configure(log_dir=tmp_path)
 
-        await _audited_dispatch("svcinfo lssystem", ctx, audit)
+        await audited_dispatch("svcinfo lssystem", ctx, audit)
 
         obj = json.loads((tmp_path / SvcAuditLogger.JSONL_NAME).read_text().strip())
         assert isinstance(obj["duration_ms"], int)

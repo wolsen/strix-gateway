@@ -17,5 +17,7 @@ class Settings(BaseSettings):
     iqn_prefix: str = "iqn.2026-02.lunacysystems.apollo"
     nqn_prefix: str = "nqn.2026-02.io.lunacysystems:apollo"
 
+    api_base_url: str = "http://localhost:8080"
+
 
 settings = Settings()

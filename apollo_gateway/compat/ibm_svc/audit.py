@@ -25,6 +25,10 @@ import dataclasses
 import json
 import logging
 import os
+import shlex
+import sys
+import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from io import TextIOBase
@@ -309,3 +313,78 @@ class SvcAuditLogger:
                 fh.write(text)
         except OSError as exc:
             _diag.warning("Audit write error to %s: %s", path, exc)
+
+
+# ---------------------------------------------------------------------------
+# Auditing dispatch wrapper
+# ---------------------------------------------------------------------------
+
+async def audited_dispatch(
+    cmd_str: str,
+    ctx: "SvcContext",
+    audit: SvcAuditLogger,
+    *,
+    remote_user: str = "svc",
+    remote_addr: Optional[str] = None,
+    remote_port: Optional[str] = None,
+    subsystem_name: Optional[str] = None,
+) -> int:
+    """Wrap :func:`~apollo_gateway.compat.ibm_svc.handlers.dispatch` with
+    byte-counting streams and audit-record emission.
+
+    Parameters
+    ----------
+    cmd_str:
+        Raw SVC command string.
+    ctx:
+        Initialised :class:`~apollo_gateway.compat.ibm_svc.handlers.SvcContext`.
+    audit:
+        Configured :class:`SvcAuditLogger`.
+    remote_user:
+        Authenticated SSH username (from ``USER`` env or ``"svc"`` default).
+    remote_addr:
+        Client IP address (from ``SSH_CONNECTION``), or ``None``.
+    remote_port:
+        Client TCP port (from ``SSH_CONNECTION``), or ``None``.
+    subsystem_name:
+        Name of the virtual subsystem that handled this command.
+
+    Returns
+    -------
+    int
+        Exit code from :func:`dispatch`.
+    """
+    from apollo_gateway.compat.ibm_svc.handlers import dispatch
+
+    req_id = str(uuid.uuid4())
+
+    try:
+        raw_argv = shlex.split(cmd_str)
+    except ValueError:
+        raw_argv = cmd_str.split()
+    argv_redacted = redact_argv(raw_argv)
+
+    out_ctr = _CountingWriter(sys.stdout)
+    err_ctr = _CountingWriter(sys.stderr)
+
+    t0 = time.monotonic()
+    exit_code = await dispatch(cmd_str, ctx, stdout=out_ctr, stderr=err_ctr)
+    duration_ms = int((time.monotonic() - t0) * 1000)
+
+    audit.emit(
+        InvocationRecord(
+            ts=datetime.now(timezone.utc).isoformat(),
+            req_id=req_id,
+            remote_user=remote_user,
+            remote_addr=remote_addr,
+            remote_port=remote_port,
+            command_raw=cmd_str,
+            argv=argv_redacted,
+            duration_ms=duration_ms,
+            exit_code=exit_code,
+            stdout_len=out_ctr.byte_count,
+            stderr_len=err_ctr.byte_count,
+            subsystem_name=subsystem_name,
+        )
+    )
+    return exit_code
