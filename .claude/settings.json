@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(uv run pytest tests/integration/ -q)",
-      "Bash(uv run pytest tests/ -q)"
+      "Bash(uv run pytest tests/ -q)",
+      "Bash(uv run pytest tests/integration/test_api_errors.py::test_create_mapping_spdk_attach_failure -v)"
     ]
   }
 }
