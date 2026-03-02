@@ -24,6 +24,8 @@ class CapabilityFeatures(BaseModel):
     replication: bool = False
     consistency_groups: bool = False
     multiattach: bool = False
+    compression: bool = False
+    easy_tier: bool = False
 
 
 class CapabilityLimits(BaseModel):
@@ -73,6 +75,8 @@ _PERSONA_DEFAULTS: dict[str, CapabilityProfile] = {
             replication=False,
             consistency_groups=True,
             multiattach=True,
+            compression=True,
+            easy_tier=True,
         ),
         quirks=CapabilityQuirks(
             return_delim_by_default=False,
