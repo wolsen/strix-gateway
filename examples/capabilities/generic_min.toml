@@ -1,0 +1,16 @@
+# Capability profile override: generic minimal (TOML)
+#
+# Usage:
+#   apollo subsystem set-capabilities my-sub -f examples/capabilities/generic_min.toml
+
+model = "Apollo-Generic"
+version = "1.0.0"
+
+[features]
+thin_provisioning = true
+snapshots = false
+clones = false
+replication = false
+
+[limits]
+max_volumes = 1024

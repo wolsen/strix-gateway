@@ -1,0 +1,25 @@
+# Capability profile override: IBM SVC basic
+#
+# Usage:
+#   apollo subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml
+#   apollo subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml --merge
+
+model: "SVC-SAFER-FAKE-9000"
+version: "8.6.0.0"
+
+features:
+  thin_provisioning: true
+  snapshots: true
+  clones: true
+  replication: false
+  consistency_groups: true
+  multiattach: true
+
+limits:
+  max_volumes: 8192
+  max_snapshots_per_volume: 256
+  max_hosts: 512
+
+quirks:
+  return_delim_by_default: false
+  strict_name_length: 63

@@ -406,17 +406,159 @@ apollo_gateway/
 ├── config.py            # Pydantic settings (env-based)
 ├── api/
 │   ├── v1.py            # /v1/* routes (pools, volumes, hosts, mappings)
+│   ├── subsystems.py    # /v1/subsystems/* routes
 │   └── admin.py         # /admin/* routes (fault/delay injection)
+├── cli/                 # ← NEW: human-facing CLI (thin REST client)
+│   ├── main.py          # Typer app + all command groups
+│   ├── client.py        # httpx client wrapper + name resolution
+│   ├── output.py        # table / json / yaml formatting
+│   ├── errors.py        # typed errors → exit codes
+│   ├── svc.py           # IBM SVC façade debug wrapper
+│   └── topo/
+│       ├── models.py    # Pydantic topology models
+│       ├── load.py      # YAML / TOML loader
+│       ├── validate.py  # Cross-reference validation
+│       └── apply.py     # Idempotent apply + smoke test
+├── compat/
+│   └── ibm_svc/         # IBM SVC SSH façade
 ├── core/
 │   ├── models.py        # Pydantic request/response schemas
 │   ├── db.py            # SQLAlchemy 2.x async ORM models
+│   ├── capabilities.py  # Capability-check helpers
+│   ├── personas.py      # Persona defaults + CapabilityProfile
 │   ├── reconcile.py     # Startup state reconciliation
 │   └── faults.py        # In-memory fault/delay injection engine
-└── spdk/
-    ├── rpc.py           # Synchronous JSON-RPC client (Unix socket)
-    ├── ensure.py        # Idempotent ensure_* functions
-    ├── iscsi.py         # iSCSI-specific RPC helpers
-    └── nvmf.py          # NVMe-oF-specific RPC helpers
+├── spdk/
+│   ├── rpc.py           # Synchronous JSON-RPC client (Unix socket)
+│   ├── ensure.py        # Idempotent ensure_* functions
+│   ├── iscsi.py         # iSCSI-specific RPC helpers
+│   └── nvmf.py          # NVMe-oF-specific RPC helpers
+└── topology/
+    ├── schema.py        # Topology Pydantic models (server-side)
+    ├── load.py          # Topology loader
+    └── validate.py      # Topology validator
+```
+
+---
+
+## Apollo CLI
+
+The `apollo` command-line tool is a human-facing thin client for the Apollo
+Gateway REST API. It does **not** call SPDK directly.
+
+### Installation
+
+```bash
+# Install the full package (includes CLI)
+uv sync          # or: pip install -e .
+
+# Verify
+apollo --help
+```
+
+### Configuration
+
+```bash
+# Set the API URL (default: http://localhost:8080)
+export APOLLO_URL=http://localhost:8080
+```
+
+Global flags available on every command:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--url URL` | `$APOLLO_URL` / `http://localhost:8080` | API base URL |
+| `--output table\|json\|yaml` | `table` | Output format |
+| `--quiet` / `--verbose` | off | Control verbosity |
+| `--timeout SECONDS` | `30` | HTTP timeout |
+
+Exit codes: `0` success, `1` validation error, `2` API error, `3` unexpected.
+
+### Usage Examples
+
+#### Status
+
+```bash
+# Show all subsystems with pool/volume/mapping counts
+apollo status
+
+# Filter to one subsystem
+apollo status --subsystem svc-a
+```
+
+#### Subsystems
+
+```bash
+apollo subsystem ls
+apollo subsystem show svc-a
+apollo subsystem create svc-a --persona ibm_svc --protocol iscsi
+apollo subsystem rm svc-a --force
+apollo subsystem capabilities svc-a
+apollo subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml --merge
+```
+
+#### Pools
+
+```bash
+apollo pool ls --subsystem svc-a
+apollo pool create gold --subsystem svc-a --backend malloc --size-gb 500
+apollo pool show gold --subsystem svc-a
+apollo pool rm gold --subsystem svc-a
+```
+
+#### Volumes
+
+```bash
+apollo volume ls --subsystem svc-a
+apollo volume create vol-001 --pool gold --size-gb 20 --subsystem svc-a
+apollo volume show vol-001 --subsystem svc-a
+apollo volume extend vol-001 --subsystem svc-a --size-gb 40
+apollo volume rm vol-001 --subsystem svc-a
+```
+
+#### Hosts
+
+```bash
+apollo host ls
+apollo host create compute-01
+apollo host add-initiator compute-01 --iscsi-iqn "iqn.1993-08.org.debian:01:abc123"
+apollo host show compute-01
+apollo host rm-initiator compute-01 --iscsi-iqn "iqn.1993-08.org.debian:01:abc123"
+apollo host rm compute-01
+```
+
+#### Mappings + Connection Info
+
+```bash
+apollo map ls --subsystem svc-a
+apollo map create --subsystem svc-a --host compute-01 --volume vol-001 --protocol iscsi
+apollo connection-info --subsystem svc-a --host compute-01 --volume vol-001
+apollo map rm --subsystem svc-a --host compute-01 --volume vol-001
+```
+
+#### Topology / CI Workflows
+
+```bash
+# Validate a topology file
+apollo validate -f examples/ci/topo-min.yaml
+
+# Apply idempotently (create missing resources)
+apollo apply -f examples/ci/topo-min.yaml
+
+# Apply with strict mode (report live resources not in file)
+apollo apply -f examples/ci/topo-multi-subsystem.yaml --strict
+
+# Smoke test (validate + check all resources exist + connection-info)
+apollo smoke -f examples/ci/topo-min.yaml
+```
+
+#### IBM SVC Façade Debug
+
+```bash
+# Run SVC commands locally via the in-process façade
+apollo svc run --subsystem svc-a "svcinfo lssystem"
+apollo svc run --subsystem svc-a "svcinfo lsmdiskgrp -delim :"
+apollo svc run --subsystem svc-a "svctask mkvdisk -name testvol -mdiskgrp gold -size 10 -unit gb"
 ```
 
 ## License

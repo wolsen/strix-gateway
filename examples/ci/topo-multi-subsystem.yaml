@@ -1,0 +1,72 @@
+# Apollo Gateway topology: multi-subsystem with different protocols + caps
+#
+# Usage:
+#   apollo validate -f examples/ci/topo-multi-subsystem.yaml
+#   apollo apply -f examples/ci/topo-multi-subsystem.yaml
+
+subsystems:
+  - name: svc-prod
+    persona: ibm_svc
+    protocols:
+      - iscsi
+    capability_profile:
+      model: "FlashSystem-5200"
+      version: "8.6.0.0"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: false
+
+  - name: nvme-lab
+    persona: generic
+    protocols:
+      - nvmeof_tcp
+    capability_profile:
+      features:
+        thin_provisioning: false
+
+pools:
+  - name: gold
+    subsystem: svc-prod
+    backend: malloc
+    size_gb: 200
+
+  - name: flash
+    subsystem: nvme-lab
+    backend: malloc
+    size_gb: 100
+
+hosts:
+  - name: compute-01
+    iqns:
+      - "iqn.1993-08.org.debian:01:abc123"
+
+  - name: compute-02
+    nqns:
+      - "nqn.2014-08.org.nvmexpress:uuid:aaa-bbb-ccc"
+
+volumes:
+  - name: cinder-vol-001
+    size_gb: 20
+    pool: gold
+
+  - name: cinder-vol-002
+    size_gb: 40
+    pool: gold
+
+  - name: nvme-vol-001
+    size_gb: 50
+    pool: flash
+
+mappings:
+  - host: compute-01
+    volume: cinder-vol-001
+    protocol: iscsi
+
+  - host: compute-01
+    volume: cinder-vol-002
+    protocol: iscsi
+
+  - host: compute-02
+    volume: nvme-vol-001
+    protocol: nvmeof_tcp

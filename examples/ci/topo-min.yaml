@@ -1,0 +1,33 @@
+# Apollo Gateway topology: minimal single-subsystem example
+#
+# Usage:
+#   apollo validate -f examples/ci/topo-min.yaml
+#   apollo apply -f examples/ci/topo-min.yaml
+#   apollo smoke -f examples/ci/topo-min.yaml
+
+subsystems:
+  - name: dev-sub
+    persona: generic
+    protocols:
+      - iscsi
+
+pools:
+  - name: pool-a
+    subsystem: dev-sub
+    backend: malloc
+    size_gb: 50
+
+hosts:
+  - name: host-01
+    iqns:
+      - "iqn.1993-08.org.debian:01:deadbeef"
+
+volumes:
+  - name: vol-001
+    size_gb: 10
+    pool: pool-a
+
+mappings:
+  - host: host-01
+    volume: vol-001
+    protocol: iscsi
