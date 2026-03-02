@@ -249,9 +249,9 @@ async def test_create_mapping_spdk_attach_failure(client: AsyncClient, mock_spdk
     def side_effect(method, *args, **kwargs):
         nonlocal call_count
         call_count += 1
-        # Fail on iscsi_target_node_add_lun
-        if method == "iscsi_target_node_add_lun":
-            raise SPDKError(-1, "add lun failed")
+        # The first LUN is created with the target node itself
+        if method == "iscsi_create_target_node":
+            raise SPDKError(-1, "create target failed")
         return None
 
     mock_spdk.call.side_effect = side_effect

@@ -369,25 +369,14 @@ class TestDeleteLvol:
 
 
 class TestEnsureIscsiExport:
-    def test_creates_target_when_absent(self):
+    def test_ensures_portal_and_initiator_groups(self):
         client = MagicMock(spec=SPDKClient)
         ec = _ec()
-        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.ensure_portal_group"), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.ensure_initiator_group"), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=False), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.create_target_node") as mock_create:
+        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.ensure_portal_group") as mock_pg, \
+             patch("apollo_gateway.spdk.ensure.iscsi_rpc.ensure_initiator_group") as mock_ig:
             ensure_iscsi_export(client, ec, _settings())
-        mock_create.assert_called_once_with(client, ec.target_iqn, luns=[])
-
-    def test_skips_when_target_exists(self):
-        client = MagicMock(spec=SPDKClient)
-        ec = _ec()
-        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.ensure_portal_group"), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.ensure_initiator_group"), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=True), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.create_target_node") as mock_create:
-            ensure_iscsi_export(client, ec, _settings())
-        mock_create.assert_not_called()
+        mock_pg.assert_called_once()
+        mock_ig.assert_called_once()
 
 
 class TestEnsureNvmefExport:
@@ -417,12 +406,26 @@ class TestEnsureNvmefExport:
 
 
 class TestEnsureIscsiMapping:
-    def test_adds_lun_when_absent(self):
+    def test_creates_target_with_first_lun_when_absent(self):
+        client = MagicMock(spec=SPDKClient)
+        ec = _ec()
+        vol = _volume()
+        mapping = _mapping(lun_id=0)
+        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=False), \
+             patch("apollo_gateway.spdk.ensure.iscsi_rpc.create_target_node") as mock_create:
+            ensure_iscsi_mapping(client, mapping, vol, ec)
+        mock_create.assert_called_once_with(
+            client, ec.target_iqn,
+            luns=[{"bdev_name": vol.bdev_name, "lun_id": 0}],
+        )
+
+    def test_adds_lun_when_target_exists(self):
         client = MagicMock(spec=SPDKClient)
         ec = _ec()
         vol = _volume()
         mapping = _mapping(lun_id=2)
-        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.get_lun_ids_on_target", return_value=[0, 1]), \
+        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=True), \
+             patch("apollo_gateway.spdk.ensure.iscsi_rpc.get_lun_ids_on_target", return_value=[0, 1]), \
              patch("apollo_gateway.spdk.ensure.iscsi_rpc.add_lun") as mock_add:
             ensure_iscsi_mapping(client, mapping, vol, ec)
         mock_add.assert_called_once_with(client, ec.target_iqn, vol.bdev_name, 2)
@@ -432,7 +435,8 @@ class TestEnsureIscsiMapping:
         ec = _ec()
         vol = _volume()
         mapping = _mapping(lun_id=0)
-        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.get_lun_ids_on_target", return_value=[0]), \
+        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=True), \
+             patch("apollo_gateway.spdk.ensure.iscsi_rpc.get_lun_ids_on_target", return_value=[0]), \
              patch("apollo_gateway.spdk.ensure.iscsi_rpc.add_lun") as mock_add:
             ensure_iscsi_mapping(client, mapping, vol, ec)
         mock_add.assert_not_called()

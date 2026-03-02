@@ -122,6 +122,12 @@ def ensure_pool(client: SPDKClient, pool: Pool, subsystem_name: str) -> None:
                 "filename": pool.aio_path,
                 "block_size": 512,
             })
+            # Query SPDK for the actual bdev size (determined by the file)
+            bdevs = client.call("bdev_get_bdevs", {"name": backing_bdev})
+            if bdevs:
+                num_blocks = bdevs[0].get("num_blocks", 0)
+                block_size = bdevs[0].get("block_size", 512)
+                pool.size_mb = (num_blocks * block_size) // (1024 * 1024)
         else:
             raise ValueError(f"Unknown backend_type: {pool.backend_type}")
     else:
@@ -206,14 +212,13 @@ def resize_lvol(client: SPDKClient, bdev_name: str, new_size_mb: int) -> None:
 # ---------------------------------------------------------------------------
 
 def ensure_iscsi_export(client: SPDKClient, ec: ExportContainer, settings: Settings) -> None:
-    """Ensure iSCSI infrastructure and a target node exist for *ec*."""
+    """Ensure iSCSI portal and initiator groups exist.
+
+    The target node itself is created lazily by :func:`ensure_iscsi_mapping`
+    because SPDK requires at least one LUN at target-creation time.
+    """
     iscsi_rpc.ensure_portal_group(client, settings.iscsi_portal_ip, settings.iscsi_portal_port)
     iscsi_rpc.ensure_initiator_group(client)
-
-    if not iscsi_rpc.target_node_exists(client, ec.target_iqn):
-        iscsi_rpc.create_target_node(client, ec.target_iqn, luns=[])
-    else:
-        logger.debug("iSCSI target %s already exists", ec.target_iqn)
 
 
 def ensure_nvmef_export(
@@ -255,7 +260,20 @@ def ensure_iscsi_mapping(
     volume: Volume,
     ec: ExportContainer,
 ) -> None:
-    """Ensure the volume's bdev is attached as the correct LUN on the target."""
+    """Ensure the volume's bdev is attached as the correct LUN on the target.
+
+    If the iSCSI target node does not exist yet it is created here with this
+    LUN as its initial member, because SPDK requires at least one LUN at
+    target-creation time.
+    """
+    if not iscsi_rpc.target_node_exists(client, ec.target_iqn):
+        iscsi_rpc.create_target_node(
+            client,
+            ec.target_iqn,
+            luns=[{"bdev_name": volume.bdev_name, "lun_id": mapping.lun_id}],
+        )
+        return
+
     existing_luns = iscsi_rpc.get_lun_ids_on_target(client, ec.target_iqn)
     if mapping.lun_id not in existing_luns:
         iscsi_rpc.add_lun(client, ec.target_iqn, volume.bdev_name, mapping.lun_id)
