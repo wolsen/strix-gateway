@@ -151,6 +151,31 @@ async def list_pools(
     return [PoolResponse.model_validate(p) for p in result.scalars().all()]
 
 
+@router.get("/pools/{pool_id}", response_model=PoolResponse)
+async def get_pool(pool_id: str, db: DbSession):
+    result = await db.execute(select(Pool).where(Pool.id == pool_id))
+    pool = result.scalar_one_or_none()
+    if pool is None:
+        raise HTTPException(status_code=404, detail=f"Pool {pool_id} not found")
+    return PoolResponse.model_validate(pool)
+
+
+@router.delete("/pools/{pool_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_pool(pool_id: str, db: DbSession):
+    result = await db.execute(select(Pool).where(Pool.id == pool_id))
+    pool = result.scalar_one_or_none()
+    if pool is None:
+        raise HTTPException(status_code=404, detail=f"Pool {pool_id} not found")
+
+    # Check no volumes exist in the pool
+    vols_result = await db.execute(select(Volume).where(Volume.pool_id == pool_id))
+    if vols_result.scalars().first():
+        raise HTTPException(status_code=409, detail="Pool has volumes; delete them first")
+
+    await db.delete(pool)
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Volumes
 # ---------------------------------------------------------------------------
