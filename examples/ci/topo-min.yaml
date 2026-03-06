@@ -1,19 +1,18 @@
-# Apollo Gateway topology: minimal single-subsystem example
+# Apollo Gateway topology: minimal single-array example
 #
 # Usage:
 #   apollo validate -f examples/ci/topo-min.yaml
 #   apollo apply -f examples/ci/topo-min.yaml
 #   apollo smoke -f examples/ci/topo-min.yaml
 
-subsystems:
-  - name: dev-sub
-    persona: generic
-    protocols:
-      - iscsi
+arrays:
+  - name: dev-arr
+    endpoints:
+      - protocol: iscsi
 
 pools:
   - name: pool-a
-    subsystem: dev-sub
+    array: dev-arr
     backend: malloc
     size_gb: 50
 

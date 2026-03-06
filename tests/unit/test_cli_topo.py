@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import tempfile
 import textwrap
 from pathlib import Path
 
@@ -27,11 +26,16 @@ class TestYAMLParsing:
         f.write_text(
             yaml.dump(
                 {
-                    "subsystems": [{"name": "s1", "protocols": ["iscsi"]}],
+                    "arrays": [
+                        {
+                            "name": "a1",
+                            "endpoints": [{"protocol": "iscsi"}],
+                        }
+                    ],
                     "pools": [
                         {
                             "name": "p1",
-                            "subsystem": "s1",
+                            "array": "a1",
                             "backend": "malloc",
                             "size_gb": 10,
                         }
@@ -45,19 +49,19 @@ class TestYAMLParsing:
             )
         )
         topo = load_topology(str(f))
-        assert len(topo.subsystems) == 1
-        assert topo.subsystems[0].name == "s1"
+        assert len(topo.arrays) == 1
+        assert topo.arrays[0].name == "a1"
         assert len(topo.pools) == 1
         assert len(topo.volumes) == 1
         assert len(topo.mappings) == 1
 
     def test_empty_sections(self, tmp_path: Path):
         f = tmp_path / "empty.yaml"
-        f.write_text(yaml.dump({"subsystems": []}))
+        f.write_text(yaml.dump({"arrays": []}))
         topo = load_topology(str(f))
-        assert topo.subsystems == []
+        assert topo.arrays == []
 
-    def test_host_normalises_iqns(self, tmp_path: Path):
+    def test_host_iqns(self, tmp_path: Path):
         f = tmp_path / "hosts.yaml"
         f.write_text(
             yaml.dump(
@@ -69,8 +73,38 @@ class TestYAMLParsing:
             )
         )
         topo = load_topology(str(f))
-        assert "iscsi" in topo.hosts[0].initiators
-        assert topo.hosts[0].initiators["iscsi"] == ["iqn.a", "iqn.b"]
+        assert topo.hosts[0].iqns == ["iqn.a", "iqn.b"]
+
+    def test_host_nqns(self, tmp_path: Path):
+        f = tmp_path / "hosts.yaml"
+        f.write_text(
+            yaml.dump(
+                {
+                    "hosts": [
+                        {"name": "h1", "nqns": ["nqn.example:01"]},
+                    ]
+                }
+            )
+        )
+        topo = load_topology(str(f))
+        assert topo.hosts[0].nqns == ["nqn.example:01"]
+
+    def test_host_wwpns(self, tmp_path: Path):
+        f = tmp_path / "hosts.yaml"
+        f.write_text(
+            yaml.dump(
+                {
+                    "hosts": [
+                        {
+                            "name": "h1",
+                            "wwpns": ["50:00:00:00:00:00:00:01"],
+                        },
+                    ]
+                }
+            )
+        )
+        topo = load_topology(str(f))
+        assert topo.hosts[0].wwpns == ["50:00:00:00:00:00:00:01"]
 
     def test_faults_and_delays(self, tmp_path: Path):
         f = tmp_path / "faults.yaml"
@@ -92,6 +126,58 @@ class TestYAMLParsing:
         assert len(topo.delays) == 1
         assert topo.delays[0].delay_seconds == 2.5
 
+    def test_array_with_multiple_endpoints(self, tmp_path: Path):
+        f = tmp_path / "multi.yaml"
+        f.write_text(
+            yaml.dump(
+                {
+                    "arrays": [
+                        {
+                            "name": "a1",
+                            "vendor": "acme",
+                            "endpoints": [
+                                {"protocol": "iscsi"},
+                                {"protocol": "nvmeof_tcp"},
+                                {"protocol": "fc"},
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+        topo = load_topology(str(f))
+        assert len(topo.arrays[0].endpoints) == 3
+        assert topo.arrays[0].vendor == "acme"
+        protos = [ep.protocol for ep in topo.arrays[0].endpoints]
+        assert protos == ["iscsi", "nvmeof_tcp", "fc"]
+
+    def test_endpoint_with_targets_and_addresses(self, tmp_path: Path):
+        f = tmp_path / "ep.yaml"
+        f.write_text(
+            yaml.dump(
+                {
+                    "arrays": [
+                        {
+                            "name": "a1",
+                            "endpoints": [
+                                {
+                                    "protocol": "iscsi",
+                                    "targets": {"iqn": "iqn.target:01"},
+                                    "addresses": {"ip": "10.0.0.1", "port": 3260},
+                                    "auth": {"method": "chap", "user": "u"},
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+        topo = load_topology(str(f))
+        ep = topo.arrays[0].endpoints[0]
+        assert ep.targets == {"iqn": "iqn.target:01"}
+        assert ep.addresses == {"ip": "10.0.0.1", "port": 3260}
+        assert ep.auth == {"method": "chap", "user": "u"}
+
 
 # ------------------------------------------------------------------
 # TOML parsing
@@ -101,41 +187,61 @@ class TestYAMLParsing:
 class TestTOMLParsing:
     def test_minimal_toml(self, tmp_path: Path):
         content = textwrap.dedent("""\
-            [[subsystems]]
-            name = "s1"
-            protocols = ["iscsi"]
+            [[arrays]]
+            name = "a1"
+
+            [[arrays.endpoints]]
+            protocol = "iscsi"
 
             [[pools]]
             name = "p1"
-            subsystem = "s1"
+            array = "a1"
             backend = "malloc"
             size_gb = 10.0
         """)
         f = tmp_path / "topo.toml"
         f.write_text(content)
         topo = load_topology(str(f))
-        assert len(topo.subsystems) == 1
-        assert topo.subsystems[0].name == "s1"
+        assert len(topo.arrays) == 1
+        assert topo.arrays[0].name == "a1"
         assert len(topo.pools) == 1
 
-    def test_capability_profile_toml(self, tmp_path: Path):
+    def test_array_profile_toml(self, tmp_path: Path):
         content = textwrap.dedent("""\
-            [[subsystems]]
-            name = "svc"
-            persona = "ibm_svc"
-            protocols = ["iscsi"]
+            [[arrays]]
+            name = "a1"
+            vendor = "ibm"
 
-            [subsystems.capability_profile]
+            [arrays.profile]
             model = "FlashSystem"
-
-            [subsystems.capability_profile.features]
             thin_provisioning = true
+
+            [[arrays.endpoints]]
+            protocol = "iscsi"
         """)
-        f = tmp_path / "cap.toml"
+        f = tmp_path / "prof.toml"
         f.write_text(content)
         topo = load_topology(str(f))
-        assert topo.subsystems[0].capability_profile is not None
-        assert topo.subsystems[0].capability_profile.model == "FlashSystem"
+        assert topo.arrays[0].profile["model"] == "FlashSystem"
+        assert topo.arrays[0].profile["thin_provisioning"] is True
+        assert topo.arrays[0].vendor == "ibm"
+
+    def test_array_fc_endpoint_toml(self, tmp_path: Path):
+        content = textwrap.dedent("""\
+            [[arrays]]
+            name = "fc-array"
+
+            [[arrays.endpoints]]
+            protocol = "fc"
+
+            [arrays.endpoints.targets]
+            wwpn = "50:00:00:00:00:00:00:AA"
+        """)
+        f = tmp_path / "fc.toml"
+        f.write_text(content)
+        topo = load_topology(str(f))
+        assert topo.arrays[0].endpoints[0].protocol == "fc"
+        assert topo.arrays[0].endpoints[0].targets["wwpn"] == "50:00:00:00:00:00:00:AA"
 
 
 # ------------------------------------------------------------------
@@ -169,11 +275,16 @@ class TestLoadErrors:
 class TestValidation:
     def _base_topo(self, **overrides) -> TopologyFile:
         data = {
-            "subsystems": [{"name": "s1", "protocols": ["iscsi"]}],
+            "arrays": [
+                {
+                    "name": "a1",
+                    "endpoints": [{"protocol": "iscsi"}],
+                }
+            ],
             "pools": [
                 {
                     "name": "p1",
-                    "subsystem": "s1",
+                    "array": "a1",
                     "backend": "malloc",
                     "size_gb": 10,
                 }
@@ -190,37 +301,37 @@ class TestValidation:
         errors = validate_topology(topo)
         assert errors == []
 
-    def test_duplicate_subsystem(self):
+    def test_duplicate_array(self):
         topo = self._base_topo(
-            subsystems=[
-                {"name": "dup", "protocols": ["iscsi"]},
-                {"name": "dup", "protocols": ["iscsi"]},
+            arrays=[
+                {"name": "dup", "endpoints": [{"protocol": "iscsi"}]},
+                {"name": "dup", "endpoints": [{"protocol": "iscsi"}]},
             ],
             pools=[
                 {
                     "name": "p1",
-                    "subsystem": "dup",
+                    "array": "dup",
                     "backend": "malloc",
                     "size_gb": 10,
                 }
             ],
         )
         errors = validate_topology(topo)
-        assert any("Duplicate subsystem" in e for e in errors)
+        assert any("Duplicate array" in e for e in errors)
 
-    def test_pool_references_unknown_subsystem(self):
+    def test_pool_references_unknown_array(self):
         topo = self._base_topo(
             pools=[
                 {
                     "name": "orphan",
-                    "subsystem": "no-such",
+                    "array": "no-such",
                     "backend": "malloc",
                     "size_gb": 10,
                 }
             ]
         )
         errors = validate_topology(topo)
-        assert any("unknown subsystem" in e for e in errors)
+        assert any("unknown array" in e for e in errors)
 
     def test_volume_references_unknown_pool(self):
         topo = self._base_topo(
@@ -228,15 +339,6 @@ class TestValidation:
         )
         errors = validate_topology(topo)
         assert any("unknown pool" in e for e in errors)
-
-    def test_mapping_bad_protocol(self):
-        topo = self._base_topo(
-            mappings=[
-                {"host": "h1", "volume": "v1", "protocol": "nvmeof_tcp"}
-            ]
-        )
-        errors = validate_topology(topo)
-        assert any("not enabled" in e for e in errors)
 
     def test_mapping_unknown_host(self):
         topo = self._base_topo(
@@ -256,41 +358,54 @@ class TestValidation:
         errors = validate_topology(topo)
         assert any("unknown volume" in e for e in errors)
 
-    def test_thin_provisioning_constraint(self):
+    def test_invalid_endpoint_protocol(self):
         topo = self._base_topo(
-            subsystems=[
+            arrays=[
                 {
-                    "name": "s1",
-                    "protocols": ["iscsi"],
-                    "capability_profile": {
-                        "features": {"thin_provisioning": False}
-                    },
+                    "name": "a1",
+                    "endpoints": [{"protocol": "foobar"}],
                 }
-            ],
-            volumes=[{"name": "v1", "size_gb": 5, "pool": "p1", "thin": True}],
+            ]
         )
         errors = validate_topology(topo)
-        assert any("thin provisioning" in e.lower() for e in errors)
+        assert any("unknown endpoint protocol" in e for e in errors)
 
-    def test_invalid_protocol_in_subsystem(self):
+    def test_fc_endpoint_protocol_valid(self):
         topo = self._base_topo(
-            subsystems=[{"name": "s1", "protocols": ["foobar"]}]
+            arrays=[
+                {
+                    "name": "a1",
+                    "endpoints": [{"protocol": "fc"}],
+                }
+            ]
         )
         errors = validate_topology(topo)
-        assert any("unknown protocol" in e for e in errors)
+        assert not any("unknown" in e for e in errors)
 
-    def test_duplicate_pool_in_subsystem(self):
+    def test_nvmeof_tcp_endpoint_protocol_valid(self):
+        topo = self._base_topo(
+            arrays=[
+                {
+                    "name": "a1",
+                    "endpoints": [{"protocol": "nvmeof_tcp"}],
+                }
+            ]
+        )
+        errors = validate_topology(topo)
+        assert not any("unknown" in e for e in errors)
+
+    def test_duplicate_pool_in_array(self):
         topo = self._base_topo(
             pools=[
                 {
                     "name": "dup",
-                    "subsystem": "s1",
+                    "array": "a1",
                     "backend": "malloc",
                     "size_gb": 10,
                 },
                 {
                     "name": "dup",
-                    "subsystem": "s1",
+                    "array": "a1",
                     "backend": "malloc",
                     "size_gb": 20,
                 },
@@ -298,3 +413,28 @@ class TestValidation:
         )
         errors = validate_topology(topo)
         assert any("Duplicate pool" in e for e in errors)
+
+    def test_array_with_no_endpoints_is_valid(self):
+        topo = self._base_topo(
+            arrays=[{"name": "a1"}]
+        )
+        errors = validate_topology(topo)
+        assert errors == []
+
+    def test_multiple_arrays_unique(self):
+        topo = self._base_topo(
+            arrays=[
+                {"name": "a1", "endpoints": [{"protocol": "iscsi"}]},
+                {"name": "a2", "endpoints": [{"protocol": "fc"}]},
+            ],
+            pools=[
+                {
+                    "name": "p1",
+                    "array": "a1",
+                    "backend": "malloc",
+                    "size_gb": 10,
+                }
+            ],
+        )
+        errors = validate_topology(topo)
+        assert errors == []

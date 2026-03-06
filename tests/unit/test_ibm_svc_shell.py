@@ -13,7 +13,7 @@ Flow validated
 --------------
   1. svctask mkvdisk   → creates Volume in DB with status=available
   2. svctask mkhost    → creates Host in DB
-  3. svctask addhostport → updates Host.iqn
+  3. svctask addhostport → updates Host.initiators_iscsi_iqns
   4. svctask mkvdiskhostmap → creates Mapping, assigns lun_id, volume=in_use
   5. svcinfo lsvdisk   → reports volume status=online, capacity correct
   6. svcinfo lshost    → reports host with iscsi port
@@ -41,7 +41,7 @@ from apollo_gateway.core.db import (
     Host,
     Mapping,
     Pool,
-    Subsystem,
+    Array,
     Volume,
     init_db,
     get_session_factory,
@@ -72,30 +72,29 @@ def mock_spdk():
 
 
 @pytest_asyncio.fixture
-async def subsystem(session_factory):
-    """Pre-existing 'default' Subsystem."""
+async def array(session_factory):
+    """Pre-existing 'default' Array."""
     async with session_factory() as s:
-        sub = Subsystem(
+        arr = Array(
             name="default",
-            persona="generic",
-            protocols_enabled='["iscsi","nvmeof_tcp"]',
-            capability_profile="{}",
+            vendor="generic",
+            profile="{}",
         )
-        s.add(sub)
+        s.add(arr)
         await s.commit()
-        await s.refresh(sub)
-        return sub
+        await s.refresh(arr)
+        return arr
 
 
 @pytest_asyncio.fixture
-async def pool(session_factory, subsystem):
+async def pool(session_factory, array):
     """Pre-existing Pool named 'pool0' (required by mkvdisk tests)."""
     async with session_factory() as s:
         p = Pool(
             name="pool0",
             backend_type="malloc",
             size_mb=10240,
-            subsystem_id=subsystem.id,
+            array_id=array.id,
         )
         s.add(p)
         await s.commit()
@@ -104,17 +103,17 @@ async def pool(session_factory, subsystem):
 
 
 @pytest_asyncio.fixture
-async def ctx(session_factory, mock_spdk, pool, subsystem):
+async def ctx(session_factory, mock_spdk, pool, array):
     """SvcContext wired to the test DB and mock SPDK client."""
-    profile = merge_profile(subsystem.persona, json.loads(subsystem.capability_profile))
+    profile_data = json.loads(array.profile)
+    profile = merge_profile(array.vendor, profile_data)
     async with session_factory() as session:
         yield SvcContext(
             session=session,
             spdk=mock_spdk,
-            subsystem_id=subsystem.id,
-            subsystem_name=subsystem.name,
+            array_id=array.id,
+            array_name=array.name,
             effective_profile=profile.model_dump(),
-            protocols_enabled=json.loads(subsystem.protocols_enabled),
         )
 
 
@@ -158,7 +157,7 @@ class TestLsSystem:
     async def test_lssystem_returns_name_field(self, ctx):
         code, out = await run("svcinfo lssystem", ctx)
         assert code == 0
-        # ctx.subsystem_name == "default"
+        # ctx.array_name == "default"
         assert "name!default" in out
 
     async def test_lssystem_custom_delim(self, ctx):
@@ -264,7 +263,7 @@ class TestHostLifecycle:
             result = await s.execute(select(Host).where(Host.name == "host1"))
             h = result.scalar_one_or_none()
         assert h is not None
-        assert "iqn.2001-04.example:h1" in (h.iqn or "")
+        assert "iqn.2001-04.example:h1" in (h.initiators_iscsi_iqns or "")
 
     async def test_addhostport_multiple_iqns_appended(self, ctx, session_factory):
         await run("svctask mkhost -name host1", ctx)
@@ -275,8 +274,8 @@ class TestHostLifecycle:
         async with session_factory() as s:
             result = await s.execute(select(Host).where(Host.name == "host1"))
             h = result.scalar_one_or_none()
-        assert "iqn.example:p1" in (h.iqn or "")
-        assert "iqn.example:p2" in (h.iqn or "")
+        assert "iqn.example:p1" in (h.initiators_iscsi_iqns or "")
+        assert "iqn.example:p2" in (h.initiators_iscsi_iqns or "")
 
     async def test_addhostport_idempotent(self, ctx, session_factory):
         await run("svctask mkhost -name host1", ctx)
@@ -287,7 +286,7 @@ class TestHostLifecycle:
             result = await s.execute(select(Host).where(Host.name == "host1"))
             h = result.scalar_one_or_none()
         # Should not duplicate
-        assert h.iqn.count("iqn.example:p1") == 1
+        assert h.initiators_iscsi_iqns.count("iqn.example:p1") == 1
 
     async def test_lshost_list(self, ctx):
         await run("svctask mkhost -name host1", ctx)
@@ -344,7 +343,7 @@ class TestMappingLifecycle:
             m = result.scalar_one_or_none()
         assert m is not None
         assert m.lun_id == 0    # first allocation is LUN 0
-        assert m.protocol == "iscsi"
+        assert m.desired_state == "attached"
 
     async def test_mkvdiskhostmap_volume_becomes_in_use(self, ctx, session_factory):
         await self._setup_vol_and_host(ctx)

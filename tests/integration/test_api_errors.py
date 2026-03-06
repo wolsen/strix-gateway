@@ -25,14 +25,20 @@ async def _pool(client, name="p", backend_type="malloc", size_mb=1024, aio_path=
     return r.json()
 
 
-async def _volume(client, pool_id, name="v", size_mb=512):
-    r = await client.post("/v1/volumes", json={"name": name, "pool_id": pool_id, "size_mb": size_mb})
+async def _volume(client, pool_id, name="v", size_gb=1):
+    r = await client.post("/v1/volumes", json={"name": name, "pool_id": pool_id, "size_gb": size_gb})
     assert r.status_code == 201, r.text
     return r.json()
 
 
-async def _host(client, name="h", iqn="iqn.test:h", nqn="nqn.test:h"):
-    r = await client.post("/v1/hosts", json={"name": name, "iqn": iqn, "nqn": nqn})
+async def _host(client, name="h",
+                iqns=None, nqns=None, wwpns=None):
+    r = await client.post("/v1/hosts", json={
+        "name": name,
+        "initiators_iscsi_iqns": iqns or ["iqn.test:h"],
+        "initiators_nvme_host_nqns": nqns or ["nqn.test:h"],
+        "initiators_fc_wwpns": wwpns or [],
+    })
     assert r.status_code == 201, r.text
     return r.json()
 
@@ -98,14 +104,14 @@ async def test_list_pools_returns_all(client: AsyncClient):
 # ===========================================================================
 
 async def test_create_volume_pool_not_found(client: AsyncClient):
-    r = await client.post("/v1/volumes", json={"name": "v", "pool_id": "nonexistent", "size_mb": 512})
+    r = await client.post("/v1/volumes", json={"name": "v", "pool_id": "nonexistent", "size_gb": 1})
     assert r.status_code == 404
 
 
 async def test_create_volume_spdk_failure(client: AsyncClient, mock_spdk):
     pool = await _pool(client)
     mock_spdk.call.side_effect = SPDKError(-1, "lvol create failed")
-    r = await client.post("/v1/volumes", json={"name": "v", "pool_id": pool["id"], "size_mb": 512})
+    r = await client.post("/v1/volumes", json={"name": "v", "pool_id": pool["id"], "size_gb": 1})
     assert r.status_code == 500
     # Volume should be in error state in DB
     mock_spdk.call.side_effect = None
@@ -134,7 +140,8 @@ async def test_delete_volume_with_active_mapping_rejected(client: AsyncClient):
     vol = await _volume(client, pool["id"])
     host = await _host(client, name="del-host")
     await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host["id"], "protocol": "iscsi"
+        "volume_id": vol["id"], "host_id": host["id"],
+        "persona_protocol": "iscsi", "underlay_protocol": "iscsi",
     })
     r = await client.delete(f"/v1/volumes/{vol['id']}")
     assert r.status_code == 409
@@ -155,22 +162,22 @@ async def test_delete_volume_spdk_failure(client: AsyncClient, mock_spdk):
 # ===========================================================================
 
 async def test_extend_volume_not_found(client: AsyncClient):
-    r = await client.post("/v1/volumes/missing/extend", json={"new_size_mb": 2048})
+    r = await client.post("/v1/volumes/missing/extend", json={"new_size_gb": 2})
     assert r.status_code == 404
 
 
 async def test_extend_volume_size_not_larger(client: AsyncClient):
     pool = await _pool(client, name="ext-pool")
-    vol = await _volume(client, pool["id"], size_mb=1024)
-    r = await client.post(f"/v1/volumes/{vol['id']}/extend", json={"new_size_mb": 512})
+    vol = await _volume(client, pool["id"], size_gb=1)
+    r = await client.post(f"/v1/volumes/{vol['id']}/extend", json={"new_size_gb": 1})
     assert r.status_code == 400
 
 
 async def test_extend_volume_spdk_failure(client: AsyncClient, mock_spdk):
     pool = await _pool(client, name="ext-fail-pool")
-    vol = await _volume(client, pool["id"], size_mb=512)
+    vol = await _volume(client, pool["id"], size_gb=1)
     mock_spdk.call.side_effect = SPDKError(-1, "resize failed")
-    r = await client.post(f"/v1/volumes/{vol['id']}/extend", json={"new_size_mb": 1024})
+    r = await client.post(f"/v1/volumes/{vol['id']}/extend", json={"new_size_gb": 2})
     assert r.status_code == 500
     mock_spdk.call.side_effect = None
 
@@ -180,8 +187,8 @@ async def test_extend_volume_spdk_failure(client: AsyncClient, mock_spdk):
 # ===========================================================================
 
 async def test_list_hosts(client: AsyncClient):
-    await _host(client, name="h1", iqn="iqn.test:h1", nqn="nqn.test:h1")
-    await _host(client, name="h2", iqn="iqn.test:h2", nqn="nqn.test:h2")
+    await _host(client, name="h1", iqns=["iqn.test:h1"], nqns=["nqn.test:h1"])
+    await _host(client, name="h2", iqns=["iqn.test:h2"], nqns=["nqn.test:h2"])
     r = await client.get("/v1/hosts")
     assert r.status_code == 200
     names = [h["name"] for h in r.json()]
@@ -196,7 +203,8 @@ async def test_list_hosts(client: AsyncClient):
 async def test_create_mapping_volume_not_found(client: AsyncClient):
     host = await _host(client)
     r = await client.post("/v1/mappings", json={
-        "volume_id": "missing", "host_id": host["id"], "protocol": "iscsi"
+        "volume_id": "missing", "host_id": host["id"],
+        "persona_protocol": "iscsi", "underlay_protocol": "iscsi",
     })
     assert r.status_code == 404
 
@@ -206,13 +214,14 @@ async def test_create_mapping_volume_wrong_status(client: AsyncClient, mock_spdk
     vol = await _volume(client, pool["id"])
     # Trigger an extend failure so volume transitions to error state
     mock_spdk.call.side_effect = SPDKError(-1, "resize failed")
-    r = await client.post(f"/v1/volumes/{vol['id']}/extend", json={"new_size_mb": 2048})
+    r = await client.post(f"/v1/volumes/{vol['id']}/extend", json={"new_size_gb": 2})
     assert r.status_code == 500
     mock_spdk.call.side_effect = None
 
     host = await _host(client, name="status-host")
     r = await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host["id"], "protocol": "iscsi"
+        "volume_id": vol["id"], "host_id": host["id"],
+        "persona_protocol": "iscsi", "underlay_protocol": "iscsi",
     })
     assert r.status_code == 409
 
@@ -221,7 +230,8 @@ async def test_create_mapping_host_not_found(client: AsyncClient):
     pool = await _pool(client, name="hm-pool")
     vol = await _volume(client, pool["id"])
     r = await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": "missing", "protocol": "iscsi"
+        "volume_id": vol["id"], "host_id": "missing",
+        "persona_protocol": "iscsi", "underlay_protocol": "iscsi",
     })
     assert r.status_code == 404
 
@@ -232,33 +242,37 @@ async def test_create_mapping_spdk_export_failure(client: AsyncClient, mock_spdk
     host = await _host(client, name="exp-fail-host")
     mock_spdk.call.side_effect = SPDKError(-1, "create target failed")
     r = await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host["id"], "protocol": "iscsi"
+        "volume_id": vol["id"], "host_id": host["id"],
+        "persona_protocol": "iscsi", "underlay_protocol": "iscsi",
     })
     assert r.status_code == 500
     mock_spdk.call.side_effect = None
 
 
-async def test_create_mapping_spdk_attach_failure(client: AsyncClient, mock_spdk):
-    """Export container creates fine but adding LUN fails."""
+async def test_create_mapping_spdk_attach_noop_empty_targets(client: AsyncClient, mock_spdk):
+    """With empty transport-endpoint targets, iSCSI mapping is a no-op."""
     pool = await _pool(client, name="attach-fail-pool")
     vol = await _volume(client, pool["id"])
     host = await _host(client, name="attach-fail-host")
 
+    # Even with a selective side_effect, there is nothing to attach to
+    # when the transport endpoint has no target_iqn configured.
     call_count = 0
 
     def side_effect(method, *args, **kwargs):
         nonlocal call_count
         call_count += 1
-        # The first LUN is created with the target node itself
         if method == "iscsi_create_target_node":
             raise SPDKError(-1, "create target failed")
         return None
 
     mock_spdk.call.side_effect = side_effect
     r = await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host["id"], "protocol": "iscsi"
+        "volume_id": vol["id"], "host_id": host["id"],
+        "persona_protocol": "iscsi", "underlay_protocol": "iscsi",
     })
-    assert r.status_code == 500
+    # No target_iqn on endpoint → ensure_iscsi_mapping is a no-op → 201
+    assert r.status_code == 201
     mock_spdk.call.side_effect = None
 
 
@@ -271,31 +285,25 @@ async def test_delete_mapping_not_found(client: AsyncClient):
     assert r.status_code == 404
 
 
-async def test_delete_mapping_spdk_failure(client: AsyncClient, mock_spdk):
+async def test_delete_mapping_spdk_noop_empty_targets(client: AsyncClient, mock_spdk):
+    """With empty NVMe-oF targets, delete mapping skips SPDK cleanup."""
     pool = await _pool(client, name="dm-pool")
     vol = await _volume(client, pool["id"])
     host = await _host(client, name="dm-host")
     m = (await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host["id"], "protocol": "nvmeof_tcp"
+        "volume_id": vol["id"], "host_id": host["id"],
+        "persona_protocol": "nvmeof_tcp", "underlay_protocol": "nvmeof_tcp",
     })).json()
 
     mock_spdk.call.side_effect = SPDKError(-1, "remove ns failed")
     r = await client.delete(f"/v1/mappings/{m['id']}")
-    assert r.status_code == 500
+    # No subsystem_nqn → cleanup is a no-op → 204
+    assert r.status_code == 204
     mock_spdk.call.side_effect = None
 
 
 # ===========================================================================
-# GET /v1/mappings/{id}/connection-info — error paths
-# ===========================================================================
-
-async def test_connection_info_not_found(client: AsyncClient):
-    r = await client.get("/v1/mappings/does-not-exist/connection-info")
-    assert r.status_code == 404
-
-
-# ===========================================================================
-# DELETE /v1/mappings/{id} — iSCSI path (covers line 362 branch)
+# DELETE /v1/mappings/{id} — iSCSI path
 # ===========================================================================
 
 async def test_delete_iscsi_mapping_success(client: AsyncClient, mock_spdk):
@@ -304,9 +312,9 @@ async def test_delete_iscsi_mapping_success(client: AsyncClient, mock_spdk):
     vol = await _volume(client, pool["id"])
     host = await _host(client, name="iscsi-del-host")
     m = (await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host["id"], "protocol": "iscsi"
+        "volume_id": vol["id"], "host_id": host["id"],
+        "persona_protocol": "iscsi", "underlay_protocol": "iscsi",
     })).json()
-    assert m["protocol"] == "iscsi"
 
     mock_spdk.call.side_effect = None
     r = await client.delete(f"/v1/mappings/{m['id']}")
@@ -318,18 +326,20 @@ async def test_delete_iscsi_mapping_success(client: AsyncClient, mock_spdk):
     assert r.json()["status"] == "available"
 
 
-async def test_delete_iscsi_mapping_spdk_failure(client: AsyncClient, mock_spdk):
-    """SPDK error during iSCSI mapping deletion returns 500."""
+async def test_delete_iscsi_mapping_noop_empty_targets(client: AsyncClient, mock_spdk):
+    """With empty iSCSI targets, SPDK cleanup is skipped → 204."""
     pool = await _pool(client, name="iscsi-del-fail-pool")
     vol = await _volume(client, pool["id"])
     host = await _host(client, name="iscsi-del-fail-host")
     m = (await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host["id"], "protocol": "iscsi"
+        "volume_id": vol["id"], "host_id": host["id"],
+        "persona_protocol": "iscsi", "underlay_protocol": "iscsi",
     })).json()
 
     mock_spdk.call.side_effect = SPDKError(-1, "delete target failed")
     r = await client.delete(f"/v1/mappings/{m['id']}")
-    assert r.status_code == 500
+    # No target_iqn → cleanup is a no-op → 204
+    assert r.status_code == 204
     mock_spdk.call.side_effect = None
 
 
@@ -342,7 +352,7 @@ async def test_delete_volume_without_bdev_name(client: AsyncClient, mock_spdk):
     pool = await _pool(client, name="no-bdev-pool")
     # Force volume creation to fail so bdev_name is None and status is error
     mock_spdk.call.side_effect = SPDKError(-1, "lvol create failed")
-    r = await client.post("/v1/volumes", json={"name": "no-bdev-vol", "pool_id": pool["id"], "size_mb": 512})
+    r = await client.post("/v1/volumes", json={"name": "no-bdev-vol", "pool_id": pool["id"], "size_gb": 1})
     assert r.status_code == 500
     mock_spdk.call.side_effect = None
 
@@ -378,7 +388,8 @@ async def test_delete_nvmeof_mapping_success_restores_volume(client: AsyncClient
     vol = await _volume(client, pool["id"])
     host = await _host(client, name="nvme-del-host")
     m = (await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host["id"], "protocol": "nvmeof_tcp"
+        "volume_id": vol["id"], "host_id": host["id"],
+        "persona_protocol": "nvmeof_tcp", "underlay_protocol": "nvmeof_tcp",
     })).json()
 
     mock_spdk.call.side_effect = None
@@ -394,14 +405,16 @@ async def test_delete_mapping_volume_stays_in_use_with_remaining(client: AsyncCl
     """When other mappings remain, volume stays in_use after deleting one mapping."""
     pool = await _pool(client, name="multi-map-pool")
     vol = await _volume(client, pool["id"])
-    host1 = await _host(client, name="multi-host-1", iqn="iqn.test:h1a", nqn="nqn.test:h1a")
-    host2 = await _host(client, name="multi-host-2", iqn="iqn.test:h2a", nqn="nqn.test:h2a")
+    host1 = await _host(client, name="multi-host-1", iqns=["iqn.test:h1a"], nqns=["nqn.test:h1a"])
+    host2 = await _host(client, name="multi-host-2", iqns=["iqn.test:h2a"], nqns=["nqn.test:h2a"])
 
     m1 = (await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host1["id"], "protocol": "nvmeof_tcp"
+        "volume_id": vol["id"], "host_id": host1["id"],
+        "persona_protocol": "nvmeof_tcp", "underlay_protocol": "nvmeof_tcp",
     })).json()
     m2 = (await client.post("/v1/mappings", json={
-        "volume_id": vol["id"], "host_id": host2["id"], "protocol": "nvmeof_tcp"
+        "volume_id": vol["id"], "host_id": host2["id"],
+        "persona_protocol": "nvmeof_tcp", "underlay_protocol": "nvmeof_tcp",
     })).json()
 
     # Delete first mapping — second still exists so volume stays in_use

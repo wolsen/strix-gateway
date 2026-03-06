@@ -58,22 +58,33 @@ def _volume(vol_id="vid-1", size_mb=512, bdev_name="lv0/apollo-vol-vid-1"):
 
 def _ec(ec_id="ec-1", protocol="iscsi", target_iqn=None, target_nqn=None,
         portal_ip="0.0.0.0", portal_port=3260):
+    """Create a mock TransportEndpoint with JSON targets/addresses/auth."""
+    import json
     ec = MagicMock()
     ec.id = ec_id
     ec.protocol = protocol
-    ec.target_iqn = target_iqn or f"iqn.2026-02.lunacysystems.apollo:{ec_id}"
-    ec.target_nqn = target_nqn or f"nqn.2026-02.io.lunacysystems:apollo:{ec_id}"
+    iqn = target_iqn or f"iqn.2026-02.lunacysystems.apollo:{ec_id}"
+    nqn = target_nqn or f"nqn.2026-02.io.lunacysystems:apollo:{ec_id}"
+    if protocol == "iscsi":
+        ec.targets = json.dumps({"target_iqn": iqn})
+        ec.addresses = json.dumps({"portals": [f"{portal_ip}:{portal_port}"]})
+    else:
+        ec.targets = json.dumps({"subsystem_nqn": nqn})
+        ec.addresses = json.dumps({"portals": [f"{portal_ip}:{portal_port}"]})
+    ec.auth = json.dumps({})
+    # Keep convenience attributes for tests that reference them directly
+    ec.target_iqn = iqn
+    ec.target_nqn = nqn
     ec.portal_ip = portal_ip
     ec.portal_port = portal_port
     return ec
 
 
-def _mapping(map_id="m-1", protocol="iscsi", lun_id=0, ns_id=None):
+def _mapping(map_id="m-1", lun_id=0, underlay_id=0):
     m = MagicMock()
     m.id = map_id
-    m.protocol = protocol
     m.lun_id = lun_id
-    m.ns_id = ns_id
+    m.underlay_id = underlay_id or lun_id
     return m
 
 
@@ -127,7 +138,7 @@ class TestEnsureInitiatorGroup:
         client.call.assert_any_call("iscsi_create_initiator_group", {
             "tag": 1,
             "initiators": ["ANY"],
-            "netmasks": ["0.0.0.0/0"],
+            "netmasks": ["ANY"],
         })
 
     def test_creates_when_other_tags_present_but_not_1(self):
@@ -138,7 +149,7 @@ class TestEnsureInitiatorGroup:
         client.call.assert_any_call("iscsi_create_initiator_group", {
             "tag": 1,
             "initiators": ["ANY"],
-            "netmasks": ["0.0.0.0/0"],
+            "netmasks": ["ANY"],
         })
 
     def test_skips_when_tag1_already_exists(self):
@@ -445,9 +456,9 @@ class TestEnsureIscsiMapping:
 class TestEnsureNvmefMapping:
     def test_adds_namespace_when_absent(self):
         client = MagicMock(spec=SPDKClient)
-        ec = _ec()
+        ec = _ec(protocol="nvmeof_tcp")
         vol = _volume()
-        mapping = _mapping(ns_id=3)
+        mapping = _mapping(underlay_id=3)
         with patch("apollo_gateway.spdk.ensure.nvmf_rpc.get_nsids", return_value=[1, 2]), \
              patch("apollo_gateway.spdk.ensure.nvmf_rpc.add_namespace") as mock_add:
             ensure_nvmef_mapping(client, mapping, vol, ec)
@@ -455,9 +466,9 @@ class TestEnsureNvmefMapping:
 
     def test_skips_when_nsid_already_present(self):
         client = MagicMock(spec=SPDKClient)
-        ec = _ec()
+        ec = _ec(protocol="nvmeof_tcp")
         vol = _volume()
-        mapping = _mapping(ns_id=1)
+        mapping = _mapping(underlay_id=1)
         with patch("apollo_gateway.spdk.ensure.nvmf_rpc.get_nsids", return_value=[1]), \
              patch("apollo_gateway.spdk.ensure.nvmf_rpc.add_namespace") as mock_add:
             ensure_nvmef_mapping(client, mapping, vol, ec)

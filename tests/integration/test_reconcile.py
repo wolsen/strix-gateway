@@ -24,20 +24,19 @@ async def session_factory():
 
 
 @pytest.fixture
-async def default_sub(session_factory):
-    """Pre-existing 'default' Subsystem required for non-nullable subsystem_id FK."""
-    from apollo_gateway.core.db import Subsystem
+async def default_arr(session_factory):
+    """Pre-existing 'default' Array required for non-nullable array_id FK."""
+    from apollo_gateway.core.db import Array
     async with session_factory() as session:
-        sub = Subsystem(
+        arr = Array(
             name="default",
-            persona="generic",
-            protocols_enabled='["iscsi","nvmeof_tcp"]',
-            capability_profile="{}",
+            vendor="generic",
+            profile="{}",
         )
-        session.add(sub)
+        session.add(arr)
         await session.commit()
-        await session.refresh(sub)
-        return sub
+        await session.refresh(arr)
+        return arr
 
 
 @pytest.fixture
@@ -79,17 +78,17 @@ async def test_reconcile_nvmef_transport_failure_is_non_fatal(session_factory, s
     await reconcile(spdk, session_factory, cfg)
 
 
-async def test_reconcile_with_pool_and_volume(session_factory, default_sub, spdk, cfg):
+async def test_reconcile_with_pool_and_volume(session_factory, default_arr, spdk, cfg):
     """Reconcile correctly ensures pool and volume SPDK resources."""
     from apollo_gateway.core.db import Pool, Volume
 
     async with session_factory() as session:
         pool = Pool(name="rpool", backend_type="malloc", size_mb=1024,
-                    subsystem_id=default_sub.id)
+                    array_id=default_arr.id)
         session.add(pool)
         await session.flush()
         vol = Volume(name="rvol", pool_id=pool.id, size_mb=512, status="available",
-                     subsystem_id=default_sub.id)
+                     array_id=default_arr.id)
         session.add(vol)
         await session.commit()
 
@@ -104,13 +103,13 @@ async def test_reconcile_with_pool_and_volume(session_factory, default_sub, spdk
     mock_lvol.assert_called_once()
 
 
-async def test_reconcile_volume_with_unknown_pool_is_skipped(session_factory, default_sub, spdk, cfg):
+async def test_reconcile_volume_with_unknown_pool_is_skipped(session_factory, default_arr, spdk, cfg):
     """A volume referencing a non-existent pool should be skipped gracefully."""
     from apollo_gateway.core.db import Volume
 
     async with session_factory() as session:
         vol = Volume(name="orphan", pool_id="nonexistent-pool", size_mb=512,
-                     status="available", subsystem_id=default_sub.id)
+                     status="available", array_id=default_arr.id)
         session.add(vol)
         await session.commit()
 
@@ -124,38 +123,44 @@ async def test_reconcile_volume_with_unknown_pool_is_skipped(session_factory, de
     mock_lvol.assert_not_called()
 
 
-async def test_reconcile_with_export_containers_and_mappings(session_factory, default_sub, spdk, cfg):
+async def test_reconcile_with_endpoints_and_mappings(session_factory, default_arr, spdk, cfg):
     """Reconcile calls ensure_iscsi/nvmef_export and ensure_*_mapping for each record."""
-    from apollo_gateway.core.db import ExportContainer, Mapping, Pool, Volume
+    from apollo_gateway.core.db import TransportEndpoint, Mapping, Pool, Volume
 
     async with session_factory() as session:
         pool = Pool(name="rp2", backend_type="malloc", size_mb=512,
-                    subsystem_id=default_sub.id)
+                    array_id=default_arr.id)
         session.add(pool)
         await session.flush()
         vol = Volume(name="rv2", pool_id=pool.id, size_mb=256,
                      status="in_use", bdev_name="rp2/apollo-vol-rv2",
-                     subsystem_id=default_sub.id)
+                     array_id=default_arr.id)
         session.add(vol)
         await session.flush()
-        ec_iscsi = ExportContainer(
-            protocol="iscsi", host_id="h1",
-            target_iqn="iqn.test:ec1", target_nqn=None,
-            portal_ip="0.0.0.0", portal_port=3260,
-            subsystem_id=default_sub.id,
+        ep_iscsi = TransportEndpoint(
+            protocol="iscsi",
+            array_id=default_arr.id,
+            targets='{"target_iqn": "iqn.test:ec1"}',
+            addresses='{"portals": ["0.0.0.0:3260"]}',
         )
-        ec_nvme = ExportContainer(
-            protocol="nvmeof_tcp", host_id="h2",
-            target_iqn=None, target_nqn="nqn.test:ec2",
-            portal_ip="0.0.0.0", portal_port=4420,
-            subsystem_id=default_sub.id,
+        ep_nvme = TransportEndpoint(
+            protocol="nvmeof_tcp",
+            array_id=default_arr.id,
+            targets='{"subsystem_nqn": "nqn.test:ec2"}',
+            addresses='{"listeners": [{"traddr": "0.0.0.0", "trsvcid": "4420"}]}',
         )
-        session.add_all([ec_iscsi, ec_nvme])
+        session.add_all([ep_iscsi, ep_nvme])
         await session.flush()
-        m1 = Mapping(volume_id=vol.id, host_id="h1", export_container_id=ec_iscsi.id,
-                     protocol="iscsi", lun_id=0, subsystem_id=default_sub.id)
-        m2 = Mapping(volume_id=vol.id, host_id="h2", export_container_id=ec_nvme.id,
-                     protocol="nvmeof_tcp", ns_id=1, subsystem_id=default_sub.id)
+        m1 = Mapping(volume_id=vol.id, host_id="h1",
+                     persona_endpoint_id=ep_iscsi.id,
+                     underlay_endpoint_id=ep_iscsi.id,
+                     lun_id=0, underlay_id=0,
+                     desired_state="attached")
+        m2 = Mapping(volume_id=vol.id, host_id="h2",
+                     persona_endpoint_id=ep_nvme.id,
+                     underlay_endpoint_id=ep_nvme.id,
+                     lun_id=0, underlay_id=1,
+                     desired_state="attached")
         session.add_all([m1, m2])
         await session.commit()
 
@@ -176,13 +181,13 @@ async def test_reconcile_with_export_containers_and_mappings(session_factory, de
     mock_nvme_map.assert_called_once()
 
 
-async def test_reconcile_ensure_pool_failure_is_non_fatal(session_factory, default_sub, spdk, cfg):
+async def test_reconcile_ensure_pool_failure_is_non_fatal(session_factory, default_arr, spdk, cfg):
     """An exception from ensure_pool should be logged, not raised."""
     from apollo_gateway.core.db import Pool
 
     async with session_factory() as session:
         session.add(Pool(name="bad-pool", backend_type="malloc", size_mb=512,
-                         subsystem_id=default_sub.id))
+                         array_id=default_arr.id))
         await session.commit()
 
     with patch("apollo_gateway.core.reconcile.ensure_pool", side_effect=Exception("pool fail")), \
@@ -192,17 +197,17 @@ async def test_reconcile_ensure_pool_failure_is_non_fatal(session_factory, defau
         await reconcile(spdk, session_factory, cfg)  # must not raise
 
 
-async def test_reconcile_ensure_lvol_failure_is_non_fatal(session_factory, default_sub, spdk, cfg):
+async def test_reconcile_ensure_lvol_failure_is_non_fatal(session_factory, default_arr, spdk, cfg):
     """An exception from ensure_lvol should be logged, not raised."""
     from apollo_gateway.core.db import Pool, Volume
 
     async with session_factory() as session:
         pool = Pool(name="lf-pool", backend_type="malloc", size_mb=512,
-                    subsystem_id=default_sub.id)
+                    array_id=default_arr.id)
         session.add(pool)
         await session.flush()
         session.add(Volume(name="lf-vol", pool_id=pool.id, size_mb=256,
-                           status="available", subsystem_id=default_sub.id))
+                           status="available", array_id=default_arr.id))
         await session.commit()
 
     with patch("apollo_gateway.core.reconcile.ensure_pool"), \
@@ -213,37 +218,38 @@ async def test_reconcile_ensure_lvol_failure_is_non_fatal(session_factory, defau
         await reconcile(spdk, session_factory, cfg)
 
 
-async def test_reconcile_ensure_export_failure_is_non_fatal(session_factory, default_sub, spdk, cfg):
+async def test_reconcile_ensure_export_failure_is_non_fatal(session_factory, default_arr, spdk, cfg):
     """An exception from ensure_*_export should be logged, not raised."""
-    from apollo_gateway.core.db import ExportContainer
+    from apollo_gateway.core.db import TransportEndpoint
 
     async with session_factory() as session:
-        session.add(ExportContainer(
-            protocol="iscsi", host_id="h99",
-            target_iqn="iqn.test:bad-ec", target_nqn=None,
-            portal_ip="0.0.0.0", portal_port=3260,
-            subsystem_id=default_sub.id,
+        session.add(TransportEndpoint(
+            protocol="iscsi",
+            array_id=default_arr.id,
+            targets='{"target_iqn": "iqn.test:bad-ep"}',
+            addresses='{"portals": ["0.0.0.0:3260"]}',
         ))
         await session.commit()
 
     with patch("apollo_gateway.core.reconcile.ensure_pool"), \
-         patch("apollo_gateway.core.reconcile.ensure_iscsi_export", side_effect=Exception("ec fail")), \
+         patch("apollo_gateway.core.reconcile.ensure_iscsi_export", side_effect=Exception("ep fail")), \
          patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
          patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
          patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)
 
 
-async def test_reconcile_mapping_with_missing_volume_or_ec_is_skipped(session_factory, default_sub, spdk, cfg):
-    """A mapping whose volume/ec is not in the loaded maps should be skipped."""
+async def test_reconcile_mapping_with_missing_volume_or_ep_is_skipped(session_factory, default_arr, spdk, cfg):
+    """A mapping whose volume/ep is not in the loaded maps should be skipped."""
     from apollo_gateway.core.db import Mapping
 
     async with session_factory() as session:
         session.add(Mapping(
             volume_id="ghost-vol", host_id="ghost-host",
-            export_container_id="ghost-ec",
-            protocol="iscsi", lun_id=0,
-            subsystem_id=default_sub.id,
+            persona_endpoint_id="ghost-ep",
+            underlay_endpoint_id="ghost-ep",
+            lun_id=0, underlay_id=0,
+            desired_state="attached",
         ))
         await session.commit()
 
@@ -257,31 +263,34 @@ async def test_reconcile_mapping_with_missing_volume_or_ec_is_skipped(session_fa
     mock_map.assert_not_called()
 
 
-async def test_reconcile_ensure_mapping_failure_is_non_fatal(session_factory, default_sub, spdk, cfg):
+async def test_reconcile_ensure_mapping_failure_is_non_fatal(session_factory, default_arr, spdk, cfg):
     """An exception from ensure_*_mapping should be logged, not raised."""
-    from apollo_gateway.core.db import ExportContainer, Mapping, Pool, Volume
+    from apollo_gateway.core.db import TransportEndpoint, Mapping, Pool, Volume
 
     async with session_factory() as session:
         pool = Pool(name="mf-pool", backend_type="malloc", size_mb=512,
-                    subsystem_id=default_sub.id)
+                    array_id=default_arr.id)
         session.add(pool)
         await session.flush()
         vol = Volume(name="mf-vol", pool_id=pool.id, size_mb=256,
                      status="in_use", bdev_name="mf-pool/apollo-vol-x",
-                     subsystem_id=default_sub.id)
+                     array_id=default_arr.id)
         session.add(vol)
         await session.flush()
-        ec = ExportContainer(
-            protocol="iscsi", host_id="h1",
-            target_iqn="iqn.test:mf-ec", target_nqn=None,
-            portal_ip="0.0.0.0", portal_port=3260,
-            subsystem_id=default_sub.id,
+        ep = TransportEndpoint(
+            protocol="iscsi",
+            array_id=default_arr.id,
+            targets='{"target_iqn": "iqn.test:mf-ep"}',
+            addresses='{"portals": ["0.0.0.0:3260"]}',
         )
-        session.add(ec)
+        session.add(ep)
         await session.flush()
         session.add(Mapping(
-            volume_id=vol.id, host_id="h1", export_container_id=ec.id,
-            protocol="iscsi", lun_id=0, subsystem_id=default_sub.id,
+            volume_id=vol.id, host_id="h1",
+            persona_endpoint_id=ep.id,
+            underlay_endpoint_id=ep.id,
+            lun_id=0, underlay_id=0,
+            desired_state="attached",
         ))
         await session.commit()
 

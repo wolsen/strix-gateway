@@ -14,9 +14,9 @@ runner = CliRunner()
 
 
 class TestSvcRun:
-    def test_requires_subsystem(self):
+    def test_requires_array(self):
         result = runner.invoke(app, ["svc", "run", "svcinfo lssystem"])
-        # Missing --subsystem should trigger an error
+        # Missing --array should trigger an error
         assert result.exit_code != 0
 
     def test_prints_stdout_and_exits_0(self):
@@ -26,7 +26,7 @@ class TestSvcRun:
         with patch("apollo_gateway.cli.client.ApolloClient.svc_run", mock_svc_run):
             result = runner.invoke(
                 app,
-                ["svc", "run", "--subsystem", "svc-a", "svcinfo lssystem"],
+                ["svc", "run", "--array", "svc-a", "svcinfo lssystem"],
             )
         mock_svc_run.assert_called_once_with("svc-a", "svcinfo lssystem")
         assert result.exit_code == 0
@@ -39,6 +39,6 @@ class TestSvcRun:
         with patch("apollo_gateway.cli.client.ApolloClient.svc_run", mock_svc_run):
             result = runner.invoke(
                 app,
-                ["svc", "run", "--subsystem", "svc-a", "svcinfo badcmd"],
+                ["svc", "run", "--array", "svc-a", "svcinfo badcmd"],
             )
         assert result.exit_code == 1

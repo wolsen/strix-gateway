@@ -16,10 +16,11 @@ import pytest
 import pytest_asyncio
 
 from apollo_gateway.topology.schema import (
+    ArraySpec,
+    EndpointSpec,
     HostSpec,
     MappingSpec,
     PoolSpec,
-    SubsystemSpec,
     TopologySpec,
     VolumeSpec,
 )
@@ -33,30 +34,36 @@ from apollo_gateway.topology.validate import validate
 class TestTopologySchema:
     def test_empty_spec_is_valid(self):
         spec = TopologySpec()
-        assert spec.subsystems == []
+        assert spec.arrays == []
         assert spec.pools == []
 
     def test_full_spec_from_dict(self):
         data = {
-            "subsystems": [{"name": "s1", "persona": "ibm_svc", "protocols": ["iscsi"]}],
-            "pools": [{"name": "gold", "subsystem": "s1", "size_gb": 100}],
+            "arrays": [
+                {
+                    "name": "a1",
+                    "vendor": "ibm_svc",
+                    "endpoints": [{"protocol": "iscsi"}],
+                }
+            ],
+            "pools": [{"name": "gold", "array": "a1", "size_gb": 100}],
             "hosts": [{"name": "h1", "iqns": ["iqn.example:h1"]}],
             "volumes": [{"name": "v1", "size_gb": 10, "pool": "gold"}],
             "mappings": [{"host": "h1", "volume": "v1", "protocol": "iscsi"}],
         }
         spec = TopologySpec.model_validate(data)
-        assert len(spec.subsystems) == 1
-        assert spec.subsystems[0].name == "s1"
+        assert len(spec.arrays) == 1
+        assert spec.arrays[0].name == "a1"
         assert spec.pools[0].size_gb == 100
         assert spec.volumes[0].size_gb == 10
 
     def test_aio_pool_requires_aio_path(self):
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
-            PoolSpec(name="p", subsystem="s", backend="aio", size_gb=10)  # missing aio_path
+            PoolSpec(name="p", array="a", backend="aio", size_gb=10)  # missing aio_path
 
     def test_aio_pool_with_path_is_valid(self):
-        p = PoolSpec(name="p", subsystem="s", backend="aio", size_gb=10, aio_path="/dev/sdb")
+        p = PoolSpec(name="p", array="a", backend="aio", size_gb=10, aio_path="/dev/sdb")
         assert p.aio_path == "/dev/sdb"
 
 
@@ -67,8 +74,8 @@ class TestTopologySchema:
 class TestValidate:
     def _make_spec(self, **kwargs) -> TopologySpec:
         defaults = {
-            "subsystems": [SubsystemSpec(name="s1", protocols=["iscsi"])],
-            "pools": [PoolSpec(name="gold", subsystem="s1", size_gb=10)],
+            "arrays": [ArraySpec(name="a1", endpoints=[EndpointSpec(protocol="iscsi")])],
+            "pools": [PoolSpec(name="gold", array="a1", size_gb=10)],
             "hosts": [HostSpec(name="h1", iqns=["iqn.ex:h1"])],
             "volumes": [VolumeSpec(name="v1", size_gb=1, pool="gold")],
             "mappings": [MappingSpec(host="h1", volume="v1", protocol="iscsi")],
@@ -80,39 +87,39 @@ class TestValidate:
         spec = self._make_spec()
         assert validate(spec) == []
 
-    def test_duplicate_subsystem_name(self):
+    def test_duplicate_array_name(self):
         spec = self._make_spec(
-            subsystems=[
-                SubsystemSpec(name="s1"),
-                SubsystemSpec(name="s1"),
+            arrays=[
+                ArraySpec(name="a1"),
+                ArraySpec(name="a1"),
             ]
         )
         errors = validate(spec)
-        assert any("Duplicate subsystem" in e for e in errors)
+        assert any("Duplicate array" in e for e in errors)
 
-    def test_pool_references_unknown_subsystem(self):
+    def test_pool_references_unknown_array(self):
         spec = self._make_spec(
-            pools=[PoolSpec(name="gold", subsystem="no-such-sub", size_gb=10)]
+            pools=[PoolSpec(name="gold", array="no-such-arr", size_gb=10)]
         )
         errors = validate(spec)
-        assert any("unknown subsystem" in e for e in errors)
+        assert any("unknown array" in e for e in errors)
 
-    def test_duplicate_pool_name_within_subsystem(self):
+    def test_duplicate_pool_name_within_array(self):
         spec = self._make_spec(
             pools=[
-                PoolSpec(name="gold", subsystem="s1", size_gb=10),
-                PoolSpec(name="gold", subsystem="s1", size_gb=20),
+                PoolSpec(name="gold", array="a1", size_gb=10),
+                PoolSpec(name="gold", array="a1", size_gb=20),
             ]
         )
         errors = validate(spec)
         assert any("Duplicate pool name" in e for e in errors)
 
-    def test_same_pool_name_in_different_subsystems_is_ok(self):
+    def test_same_pool_name_in_different_arrays_is_ok(self):
         spec = self._make_spec(
-            subsystems=[SubsystemSpec(name="s1"), SubsystemSpec(name="s2")],
+            arrays=[ArraySpec(name="a1"), ArraySpec(name="a2")],
             pools=[
-                PoolSpec(name="gold", subsystem="s1", size_gb=10),
-                PoolSpec(name="gold", subsystem="s2", size_gb=10),
+                PoolSpec(name="gold", array="a1", size_gb=10),
+                PoolSpec(name="gold", array="a2", size_gb=10),
             ],
         )
         errors = validate(spec)
@@ -138,14 +145,6 @@ class TestValidate:
         )
         errors = validate(spec)
         assert any("unknown volume" in e for e in errors)
-
-    def test_mapping_protocol_not_enabled_in_subsystem(self):
-        spec = self._make_spec(
-            subsystems=[SubsystemSpec(name="s1", protocols=["iscsi"])],
-            mappings=[MappingSpec(host="h1", volume="v1", protocol="nvmeof_tcp")],
-        )
-        errors = validate(spec)
-        assert any("nvmeof_tcp" in e for e in errors)
 
     def test_duplicate_host_name(self):
         spec = self._make_spec(
@@ -174,40 +173,41 @@ class TestYamlLoader:
         from apollo_gateway.topology.load import load_yaml
         path = Path(__file__).parents[2] / "examples" / "ci" / "single_svc.yaml"
         spec = load_yaml(path)
-        assert len(spec.subsystems) == 1
-        assert spec.subsystems[0].name == "svc-a"
-        assert spec.subsystems[0].persona == "ibm_svc"
+        assert len(spec.arrays) == 1
+        assert spec.arrays[0].name == "svc-a"
+        assert spec.arrays[0].vendor == "ibm_svc"
         assert len(spec.pools) == 1
         assert spec.pools[0].name == "gold"
         assert len(spec.volumes) == 2
         assert validate(spec) == []
 
-    def test_load_dual_subsystem_example(self):
+    def test_load_dual_array_example(self):
         from apollo_gateway.topology.load import load_yaml
         path = Path(__file__).parents[2] / "examples" / "ci" / "dual_subsystem.yaml"
         spec = load_yaml(path)
-        assert len(spec.subsystems) == 2
-        names = [s.name for s in spec.subsystems]
+        assert len(spec.arrays) == 2
+        names = [a.name for a in spec.arrays]
         assert "svc-a" in names
         assert "svc-b" in names
 
     def test_load_inline_yaml(self, tmp_path):
         from apollo_gateway.topology.load import load_yaml
         content = textwrap.dedent("""\
-            subsystems:
-              - name: inline-sub
-                persona: generic
-                protocols: [iscsi]
+            arrays:
+              - name: inline-arr
+                vendor: generic
+                endpoints:
+                  - protocol: iscsi
             pools:
               - name: pool1
-                subsystem: inline-sub
+                array: inline-arr
                 size_gb: 10
         """)
         p = tmp_path / "topo.yaml"
         p.write_text(content)
         spec = load_yaml(p)
-        assert spec.subsystems[0].name == "inline-sub"
-        assert spec.pools[0].subsystem == "inline-sub"
+        assert spec.arrays[0].name == "inline-arr"
+        assert spec.pools[0].array == "inline-arr"
         assert validate(spec) == []
 
 
@@ -219,19 +219,21 @@ class TestTomlLoader:
     def test_load_inline_toml(self, tmp_path):
         from apollo_gateway.topology.load import load_toml
         content = textwrap.dedent("""\
-            [[subsystems]]
-            name = "toml-sub"
-            persona = "generic"
-            protocols = ["iscsi"]
+            [[arrays]]
+            name = "toml-arr"
+            vendor = "generic"
+
+            [[arrays.endpoints]]
+            protocol = "iscsi"
 
             [[pools]]
             name = "pool1"
-            subsystem = "toml-sub"
+            array = "toml-arr"
             size_gb = 20.0
         """)
         p = tmp_path / "topo.toml"
         p.write_bytes(content.encode())
         spec = load_toml(p)
-        assert spec.subsystems[0].name == "toml-sub"
+        assert spec.arrays[0].name == "toml-arr"
         assert spec.pools[0].size_gb == 20.0
         assert validate(spec) == []

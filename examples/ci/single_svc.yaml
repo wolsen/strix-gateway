@@ -1,25 +1,25 @@
-# Apollo Gateway topology: single IBM SVC subsystem
+# Apollo Gateway topology: single IBM SVC array
 #
 # Usage:
 #   python -m apollo_gateway.topology.load examples/ci/single_svc.yaml
 #   or programmatically via apply_topology()
 
-subsystems:
+arrays:
   - name: svc-a
-    persona: ibm_svc
-    protocols:
-      - iscsi
-    capability_profile:
+    vendor: ibm_svc
+    profile:
       model: "FlashSystem-5200"
       version: "8.6.0.0"
       features:
         thin_provisioning: true
         snapshots: true
         replication: false
+    endpoints:
+      - protocol: iscsi
 
 pools:
   - name: gold
-    subsystem: svc-a
+    array: svc-a
     backend: malloc
     size_gb: 100
 

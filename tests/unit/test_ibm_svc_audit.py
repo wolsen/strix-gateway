@@ -37,7 +37,7 @@ from apollo_gateway.compat.ibm_svc.audit import (
 )
 from apollo_gateway.compat.ibm_svc.audit import audited_dispatch
 from apollo_gateway.compat.ibm_svc.handlers import SvcContext
-from apollo_gateway.core.db import Pool, Subsystem, init_db, get_session_factory
+from apollo_gateway.core.db import Pool, Array, init_db, get_session_factory
 from apollo_gateway.core.personas import merge_profile
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -413,39 +413,36 @@ import json as _json
 
 @pytest_asyncio.fixture
 async def audit_ctx(tmp_path):
-    """SvcContext with in-memory DB (default subsystem + pool0 pre-created) + mock SPDK."""
+    """SvcContext with in-memory DB (default array + pool0 pre-created) + mock SPDK."""
     await init_db(TEST_DATABASE_URL)
     factory = get_session_factory()
     mock_spdk = MagicMock()
     mock_spdk.call = MagicMock(return_value=None)
 
     async with factory() as s:
-        sub = Subsystem(
+        arr = Array(
             name="default",
-            persona="generic",
-            protocols_enabled='["iscsi","nvmeof_tcp"]',
-            capability_profile="{}",
+            vendor="generic",
+            profile="{}",
         )
-        s.add(sub)
+        s.add(arr)
         await s.flush()
-        p = Pool(name="pool0", backend_type="malloc", size_mb=10240, subsystem_id=sub.id)
+        p = Pool(name="pool0", backend_type="malloc", size_mb=10240, array_id=arr.id)
         s.add(p)
         await s.commit()
-        sub_id = sub.id
-        sub_name = sub.name
-        sub_persona = sub.persona
-        sub_cap = sub.capability_profile
-        sub_proto = sub.protocols_enabled
+        arr_id = arr.id
+        arr_name = arr.name
+        arr_vendor = arr.vendor
+        arr_profile = arr.profile
 
-    profile = merge_profile(sub_persona, _json.loads(sub_cap))
+    profile = merge_profile(arr_vendor, _json.loads(arr_profile))
     async with factory() as session:
         yield SvcContext(
             session=session,
             spdk=mock_spdk,
-            subsystem_id=sub_id,
-            subsystem_name=sub_name,
+            array_id=arr_id,
+            array_name=arr_name,
             effective_profile=profile.model_dump(),
-            protocols_enabled=_json.loads(sub_proto),
         ), tmp_path
 
 

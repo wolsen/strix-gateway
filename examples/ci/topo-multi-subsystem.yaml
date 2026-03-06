@@ -1,38 +1,37 @@
-# Apollo Gateway topology: multi-subsystem with different protocols + caps
+# Apollo Gateway topology: multi-array with different protocols
 #
 # Usage:
 #   apollo validate -f examples/ci/topo-multi-subsystem.yaml
 #   apollo apply -f examples/ci/topo-multi-subsystem.yaml
 
-subsystems:
+arrays:
   - name: svc-prod
-    persona: ibm_svc
-    protocols:
-      - iscsi
-    capability_profile:
+    vendor: ibm_svc
+    profile:
       model: "FlashSystem-5200"
       version: "8.6.0.0"
       features:
         thin_provisioning: true
         snapshots: true
         replication: false
+    endpoints:
+      - protocol: iscsi
 
   - name: nvme-lab
-    persona: generic
-    protocols:
-      - nvmeof_tcp
-    capability_profile:
+    profile:
       features:
         thin_provisioning: false
+    endpoints:
+      - protocol: nvmeof_tcp
 
 pools:
   - name: gold
-    subsystem: svc-prod
+    array: svc-prod
     backend: malloc
     size_gb: 200
 
   - name: flash
-    subsystem: nvme-lab
+    array: nvme-lab
     backend: malloc
     size_gb: 100
 

@@ -7,12 +7,20 @@
 # new settings take effect.
 #
 # Supported keys and their APOLLO_* environment variable equivalents:
-#   iscsi-portal-ip    → APOLLO_ISCSI_PORTAL_IP
-#   iscsi-portal-port  → APOLLO_ISCSI_PORTAL_PORT
-#   nvmef-portal-ip    → APOLLO_NVMEF_PORTAL_IP
-#   nvmef-portal-port  → APOLLO_NVMEF_PORTAL_PORT
-#   iqn-prefix         → APOLLO_IQN_PREFIX
-#   nqn-prefix         → APOLLO_NQN_PREFIX
+#   iscsi-portal-ip         → APOLLO_ISCSI_PORTAL_IP
+#   iscsi-portal-port       → APOLLO_ISCSI_PORTAL_PORT
+#   nvmef-portal-ip         → APOLLO_NVMEF_PORTAL_IP
+#   nvmef-portal-port       → APOLLO_NVMEF_PORTAL_PORT
+#   iqn-prefix              → APOLLO_IQN_PREFIX
+#   nqn-prefix              → APOLLO_NQN_PREFIX
+#   vhost-enabled           → APOLLO_VHOST_ENABLED
+#   vhost-domain            → APOLLO_VHOST_DOMAIN
+#   vhost-hostname-override → APOLLO_VHOST_HOSTNAME_OVERRIDE
+#   vhost-require-match     → APOLLO_VHOST_REQUIRE_MATCH
+#   tls-mode                → APOLLO_TLS_MODE
+#   tls-rotate-before-days  → APOLLO_TLS_ROTATE_BEFORE_DAYS
+#   bind-https-port         → APOLLO_BIND_HTTPS_PORT
+#   bind-http-port          → APOLLO_BIND_HTTP_PORT
 
 set -euo pipefail
 
@@ -30,7 +38,15 @@ env_file="${SNAP_DATA}/config/apollo.env"
       nvmef-portal-ip \
       nvmef-portal-port \
       iqn-prefix \
-      nqn-prefix
+      nqn-prefix \
+      vhost-enabled \
+      vhost-domain \
+      vhost-hostname-override \
+      vhost-require-match \
+      tls-mode \
+      tls-rotate-before-days \
+      bind-https-port \
+      bind-http-port
   do
     val=$(snapctl get "${key}" 2>/dev/null || true)
     if [ -n "${val}" ]; then
