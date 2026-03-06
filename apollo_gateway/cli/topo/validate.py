@@ -6,7 +6,7 @@ from __future__ import annotations
 from apollo_gateway.cli.topo.models import TopologyFile
 
 
-_VALID_PROTOCOLS = {"iscsi", "nvmeof_tcp"}
+_VALID_PROTOCOLS = {"iscsi", "nvmeof_tcp", "fc"}
 
 
 def validate_topology(topo: TopologyFile) -> list[str]:
@@ -16,41 +16,40 @@ def validate_topology(topo: TopologyFile) -> list[str]:
     """
     errors: list[str] = []
 
-    subsystem_names: set[str] = set()
-    subsystem_map: dict[str, object] = {}
+    array_names: set[str] = set()
     pool_names: set[str] = set()
-    pool_subsystem: dict[str, str] = {}
+    pool_array: dict[str, str] = {}
     host_names: set[str] = set()
     volume_names: set[str] = set()
     volume_pool: dict[str, str] = {}
 
-    # ---- Subsystems (uniqueness + valid protocols) -------------------
-    for s in topo.subsystems:
-        if s.name in subsystem_names:
-            errors.append(f"Duplicate subsystem name: '{s.name}'")
-        subsystem_names.add(s.name)
-        subsystem_map[s.name] = s
-        for p in s.protocols:
-            if p not in _VALID_PROTOCOLS:
+    # ---- Arrays (uniqueness + endpoint protocols) --------------------
+    for a in topo.arrays:
+        if a.name in array_names:
+            errors.append(f"Duplicate array name: '{a.name}'")
+        array_names.add(a.name)
+        for ep in a.endpoints:
+            if ep.protocol not in _VALID_PROTOCOLS:
                 errors.append(
-                    f"Subsystem '{s.name}': unknown protocol '{p}'"
+                    f"Array '{a.name}': unknown endpoint protocol "
+                    f"'{ep.protocol}'"
                 )
 
-    # ---- Pools (reference subsystem, unique within subsystem) --------
-    pools_per_subsystem: dict[str, set[str]] = {}
+    # ---- Pools (reference array, unique within array) ----------------
+    pools_per_array: dict[str, set[str]] = {}
     for p in topo.pools:
-        if p.subsystem not in subsystem_names:
+        if p.array not in array_names:
             errors.append(
-                f"Pool '{p.name}' references unknown subsystem '{p.subsystem}'"
+                f"Pool '{p.name}' references unknown array '{p.array}'"
             )
-        sub_pools = pools_per_subsystem.setdefault(p.subsystem, set())
-        if p.name in sub_pools:
+        arr_pools = pools_per_array.setdefault(p.array, set())
+        if p.name in arr_pools:
             errors.append(
-                f"Duplicate pool name '{p.name}' in subsystem '{p.subsystem}'"
+                f"Duplicate pool name '{p.name}' in array '{p.array}'"
             )
-        sub_pools.add(p.name)
+        arr_pools.add(p.name)
         pool_names.add(p.name)
-        pool_subsystem[p.name] = p.subsystem
+        pool_array[p.name] = p.array
 
     # ---- Hosts (uniqueness) ------------------------------------------
     for h in topo.hosts:
@@ -58,61 +57,29 @@ def validate_topology(topo: TopologyFile) -> list[str]:
             errors.append(f"Duplicate host name: '{h.name}'")
         host_names.add(h.name)
 
-    # ---- Volumes (reference pool, unique within subsystem) -----------
-    vols_per_subsystem: dict[str, set[str]] = {}
+    # ---- Volumes (reference pool, unique within array) ---------------
+    vols_per_array: dict[str, set[str]] = {}
     for v in topo.volumes:
         if v.pool not in pool_names:
             errors.append(
                 f"Volume '{v.name}' references unknown pool '{v.pool}'"
             )
         else:
-            sub = pool_subsystem[v.pool]
-            sub_vols = vols_per_subsystem.setdefault(sub, set())
-            if v.name in sub_vols:
+            arr = pool_array[v.pool]
+            arr_vols = vols_per_array.setdefault(arr, set())
+            if v.name in arr_vols:
                 errors.append(
-                    f"Duplicate volume name '{v.name}' in subsystem '{sub}'"
+                    f"Duplicate volume name '{v.name}' in array '{arr}'"
                 )
-            sub_vols.add(v.name)
+            arr_vols.add(v.name)
         volume_names.add(v.name)
         volume_pool[v.name] = v.pool
 
-    # ---- Mappings (references + protocol enablement) -----------------
+    # ---- Mappings (host + volume references) -------------------------
     for m in topo.mappings:
         if m.host not in host_names:
             errors.append(f"Mapping references unknown host '{m.host}'")
         if m.volume not in volume_names:
             errors.append(f"Mapping references unknown volume '{m.volume}'")
-        else:
-            pname = volume_pool.get(m.volume)
-            sub_name = pool_subsystem.get(pname, "") if pname else ""
-            sub_spec = subsystem_map.get(sub_name)
-            if sub_spec and m.protocol not in sub_spec.protocols:
-                errors.append(
-                    f"Mapping protocol '{m.protocol}' is not enabled for "
-                    f"subsystem '{sub_name}' (volume '{m.volume}')"
-                )
-
-    # ---- Capability constraints --------------------------------------
-    for s in topo.subsystems:
-        if not s.capability_profile:
-            continue
-        feats = s.capability_profile.features
-
-        # thin provisioning constraint
-        if feats.get("thin_provisioning") is False:
-            for v in topo.volumes:
-                pname = v.pool
-                vol_sub = pool_subsystem.get(pname)
-                if vol_sub == s.name and v.thin is True:
-                    errors.append(
-                        f"Volume '{v.name}': thin provisioning requested but "
-                        f"disabled in subsystem '{s.name}' capability profile"
-                    )
-
-        # snapshots constraint (future-proof)
-        if feats.get("snapshots") is False:
-            # No snapshot spec in topology yet; placeholder for when
-            # snapshot references are added to topology files.
-            pass
 
     return errors

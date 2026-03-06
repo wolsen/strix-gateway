@@ -29,30 +29,28 @@ def validate(spec: TopologySpec) -> list[str]:
     """
     errors: list[str] = []
 
-    # 1. Subsystem names must be unique
-    seen_subsystems: set[str] = set()
-    for sub in spec.subsystems:
-        if sub.name in seen_subsystems:
-            errors.append(f"Duplicate subsystem name: '{sub.name}'")
-        seen_subsystems.add(sub.name)
+    # 1. Array names must be unique
+    seen_arrays: set[str] = set()
+    for arr in spec.arrays:
+        if arr.name in seen_arrays:
+            errors.append(f"Duplicate array name: '{arr.name}'")
+        seen_arrays.add(arr.name)
 
-    # 2. Pool names must be unique within each subsystem; subsystem must exist
-    # key: (subsystem_name, pool_name) → PoolSpec
-    pool_map: dict[str, str] = {}   # pool_name → subsystem_name (for volume lookup)
+    # 2. Pool names must be unique within each array; array must exist
+    pool_map: dict[str, str] = {}   # pool_name → array_name (for volume lookup)
     seen_pool_keys: set[tuple[str, str]] = set()
     for pool in spec.pools:
-        if pool.subsystem not in seen_subsystems:
+        if pool.array not in seen_arrays:
             errors.append(
-                f"Pool '{pool.name}' references unknown subsystem '{pool.subsystem}'"
+                f"Pool '{pool.name}' references unknown array '{pool.array}'"
             )
-        key = (pool.subsystem, pool.name)
+        key = (pool.array, pool.name)
         if key in seen_pool_keys:
             errors.append(
-                f"Duplicate pool name '{pool.name}' in subsystem '{pool.subsystem}'"
+                f"Duplicate pool name '{pool.name}' in array '{pool.array}'"
             )
         seen_pool_keys.add(key)
-        # Last writer wins for pool_name → subsystem mapping (duplicates already flagged)
-        pool_map[pool.name] = pool.subsystem
+        pool_map[pool.name] = pool.array
 
     # 3. Host names must be unique
     seen_hosts: set[str] = set()
@@ -72,8 +70,7 @@ def validate(spec: TopologySpec) -> list[str]:
                 f"Volume '{vol.name}' references unknown pool '{vol.pool}'"
             )
 
-    # 5. Mapping checks: host, volume must exist; protocol must be enabled by subsystem
-    sub_protocols: dict[str, list[str]] = {s.name: s.protocols for s in spec.subsystems}
+    # 5. Mapping checks: host and volume must exist
     for mapping in spec.mappings:
         if mapping.host not in seen_hosts:
             errors.append(
@@ -83,20 +80,5 @@ def validate(spec: TopologySpec) -> list[str]:
             errors.append(
                 f"Mapping references unknown volume '{mapping.volume}'"
             )
-        else:
-            # Check protocol is enabled by the volume's subsystem
-            vol_pool = next(
-                (v.pool for v in spec.volumes if v.name == mapping.volume), None
-            )
-            if vol_pool is not None:
-                sub_name = pool_map.get(vol_pool)
-                if sub_name is not None and sub_name in sub_protocols:
-                    enabled = sub_protocols[sub_name]
-                    if mapping.protocol not in enabled:
-                        errors.append(
-                            f"Mapping for volume '{mapping.volume}' uses protocol "
-                            f"'{mapping.protocol}' which is not enabled for subsystem "
-                            f"'{sub_name}' (enabled: {enabled})"
-                        )
 
     return errors

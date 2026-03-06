@@ -4,16 +4,17 @@
 Each function checks whether the resource already exists in SPDK before
 attempting creation, making them safe to call on repeated reconcile passes.
 
-SPDK naming conventions (v1 — subsystem-scoped):
+SPDK naming conventions (v0.2 — array-scoped):
   - Backing bdev:   apollo-pool-{pool.id}
-  - Lvol store:     {subsystem_name}.{pool_name}
-  - Lvol bdev:      {subsystem_name}.{pool_name}/apollo-vol-{volume_id}
-  - iSCSI IQN:      {prefix}:{subsystem_name}:{export_container_id}
-  - NVMe NQN:       {prefix}:{subsystem_name}:{export_container_id}
+  - Lvol store:     {array_name}.{pool_name}
+  - Lvol bdev:      {array_name}.{pool_name}/apollo-vol-{volume_id}
+  - iSCSI IQN:      stored on TransportEndpoint.targets.target_iqn
+  - NVMe NQN:       stored on TransportEndpoint.targets.subsystem_nqn
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING
 
@@ -22,7 +23,7 @@ from apollo_gateway.spdk import nvmf as nvmf_rpc
 from apollo_gateway.spdk.rpc import SPDKClient, SPDKError
 
 if TYPE_CHECKING:
-    from apollo_gateway.core.db import ExportContainer, Mapping, Pool, Volume
+    from apollo_gateway.core.db import Mapping, Pool, TransportEndpoint, Volume
     from apollo_gateway.config import Settings
 
 logger = logging.getLogger("apollo_gateway.spdk.ensure")
@@ -54,14 +55,14 @@ def allocate_nsid(used: list[int]) -> int:
 # SPDK naming helpers
 # ---------------------------------------------------------------------------
 
-def _lvstore_name(subsystem_name: str, pool_name: str) -> str:
-    """Lvol store name: '{subsystem_name}.{pool_name}'."""
-    return f"{subsystem_name}.{pool_name}"
+def _lvstore_name(array_name: str, pool_name: str) -> str:
+    """Lvol store name: '{array_name}.{pool_name}'."""
+    return f"{array_name}.{pool_name}"
 
 
-def _lvol_bdev_name(subsystem_name: str, pool_name: str, volume_id: str) -> str:
+def _lvol_bdev_name(array_name: str, pool_name: str, volume_id: str) -> str:
     """Full SPDK bdev name for an lvol: '{lvstore}/apollo-vol-{volume_id}'."""
-    return f"{_lvstore_name(subsystem_name, pool_name)}/apollo-vol-{volume_id}"
+    return f"{_lvstore_name(array_name, pool_name)}/apollo-vol-{volume_id}"
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +85,7 @@ def _lvstore_exists(client: SPDKClient, lvs_name: str) -> bool:
         return False
 
 
-def ensure_pool(client: SPDKClient, pool: Pool, subsystem_name: str) -> None:
+def ensure_pool(client: SPDKClient, pool: Pool, array_name: str) -> None:
     """Ensure backing bdev and lvol store exist for *pool*.
 
     Parameters
@@ -93,13 +94,13 @@ def ensure_pool(client: SPDKClient, pool: Pool, subsystem_name: str) -> None:
         Connected :class:`~apollo_gateway.spdk.rpc.SPDKClient`.
     pool:
         ORM :class:`~apollo_gateway.core.db.Pool` instance.
-    subsystem_name:
-        Name of the owning subsystem (used in lvol store naming).
+    array_name:
+        Name of the owning array (used in lvol store naming).
     """
     from apollo_gateway.core.models import PoolBackendType
 
     backing_bdev = f"apollo-pool-{pool.id}"
-    lvs_name = _lvstore_name(subsystem_name, pool.name)
+    lvs_name = _lvstore_name(array_name, pool.name)
 
     if not _bdev_exists(client, backing_bdev):
         if pool.backend_type == PoolBackendType.malloc:
@@ -151,7 +152,7 @@ def ensure_lvol(
     client: SPDKClient,
     volume: Volume,
     pool_name: str,
-    subsystem_name: str,
+    array_name: str,
 ) -> str:
     """Ensure the lvol for *volume* exists. Returns full bdev name.
 
@@ -163,12 +164,12 @@ def ensure_lvol(
         ORM :class:`~apollo_gateway.core.db.Volume` instance.
     pool_name:
         Name of the pool (used for lvstore lookup).
-    subsystem_name:
-        Name of the owning subsystem (used in bdev naming).
+    array_name:
+        Name of the owning array (used in bdev naming).
     """
     lvol_name = f"apollo-vol-{volume.id}"
-    full_name = _lvol_bdev_name(subsystem_name, pool_name, volume.id)
-    lvs_name = _lvstore_name(subsystem_name, pool_name)
+    full_name = _lvol_bdev_name(array_name, pool_name, volume.id)
+    lvs_name = _lvstore_name(array_name, pool_name)
 
     if not _bdev_exists(client, full_name):
         logger.info(
@@ -208,88 +209,132 @@ def resize_lvol(client: SPDKClient, bdev_name: str, new_size_mb: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Export container (iSCSI target / NVMe-oF subsystem)
+# Export (iSCSI target / NVMe-oF subsystem) — now driven by TransportEndpoint
 # ---------------------------------------------------------------------------
 
-def ensure_iscsi_export(client: SPDKClient, ec: ExportContainer, settings: Settings) -> None:
+def _ep_targets(ep: TransportEndpoint) -> dict:
+    """Parse endpoint.targets (JSON str or dict).  Returns a dict always."""
+    raw = json.loads(ep.targets) if isinstance(ep.targets, str) else ep.targets
+    if isinstance(raw, list):
+        return {}
+    return raw or {}
+
+
+def _ep_addresses(ep: TransportEndpoint) -> dict:
+    """Parse endpoint.addresses (JSON str or dict).  Returns a dict always."""
+    raw = json.loads(ep.addresses) if isinstance(ep.addresses, str) else ep.addresses
+    if isinstance(raw, list):
+        return {"portals": raw} if raw else {}
+    return raw or {}
+
+
+def ensure_iscsi_export(client: SPDKClient, ep: TransportEndpoint, settings: Settings) -> None:
     """Ensure iSCSI portal and initiator groups exist.
 
     The target node itself is created lazily by :func:`ensure_iscsi_mapping`
     because SPDK requires at least one LUN at target-creation time.
     """
-    iscsi_rpc.ensure_portal_group(client, settings.iscsi_portal_ip, settings.iscsi_portal_port)
+    addresses = _ep_addresses(ep)
+    portals = addresses.get("portals", [f"{settings.iscsi_portal_ip}:{settings.iscsi_portal_port}"])
+    if portals:
+        first = portals[0]
+        ip, _, port = first.rpartition(":")
+        iscsi_rpc.ensure_portal_group(client, ip or settings.iscsi_portal_ip, int(port or settings.iscsi_portal_port))
+    else:
+        iscsi_rpc.ensure_portal_group(client, settings.iscsi_portal_ip, settings.iscsi_portal_port)
     iscsi_rpc.ensure_initiator_group(client)
 
 
 def ensure_nvmef_export(
     client: SPDKClient,
-    ec: ExportContainer,
+    ep: TransportEndpoint,
     settings: Settings,
     model_number: str = "Apollo Gateway",
     serial_number: str = "APOLLO0001",
 ) -> None:
-    """Ensure NVMe-oF TCP transport and subsystem exist for *ec*.
+    """Ensure NVMe-oF TCP transport and subsystem exist for *ep*."""
+    targets = _ep_targets(ep)
+    target_nqn = targets.get("subsystem_nqn", "")
+    if not target_nqn:
+        logger.warning("NVMe-oF endpoint %s has no subsystem_nqn in targets", ep.id)
+        return
 
-    Parameters
-    ----------
-    model_number:
-        NVMe subsystem model string (from capability profile).
-    serial_number:
-        NVMe subsystem serial number string.
-    """
     nvmf_rpc.ensure_transport(client)
 
-    if not nvmf_rpc.subsystem_exists(client, ec.target_nqn):
+    if not nvmf_rpc.subsystem_exists(client, target_nqn):
         nvmf_rpc.create_subsystem(
-            client, ec.target_nqn,
+            client, target_nqn,
             model_number=model_number,
             serial_number=serial_number,
         )
-        nvmf_rpc.add_listener(client, ec.target_nqn, settings.nvmef_portal_ip, settings.nvmef_portal_port)
+        addresses = _ep_addresses(ep)
+        listeners = addresses.get("listeners", [f"{settings.nvmef_portal_ip}:{settings.nvmef_portal_port}"])
+        for listener in listeners:
+            ip, _, port = listener.rpartition(":")
+            nvmf_rpc.add_listener(
+                client, target_nqn,
+                ip or settings.nvmef_portal_ip,
+                int(port or settings.nvmef_portal_port),
+            )
     else:
-        logger.debug("NVMe-oF subsystem %s already exists", ec.target_nqn)
+        logger.debug("NVMe-oF subsystem %s already exists", target_nqn)
 
 
 # ---------------------------------------------------------------------------
-# Mapping (attach LUN / namespace)
+# Mapping (attach LUN / namespace) — now driven by Mapping + TransportEndpoint
 # ---------------------------------------------------------------------------
 
 def ensure_iscsi_mapping(
     client: SPDKClient,
     mapping: Mapping,
     volume: Volume,
-    ec: ExportContainer,
+    ep: TransportEndpoint,
 ) -> None:
     """Ensure the volume's bdev is attached as the correct LUN on the target.
 
     If the iSCSI target node does not exist yet it is created here with this
-    LUN as its initial member, because SPDK requires at least one LUN at
-    target-creation time.
+    LUN as its initial member.
     """
-    if not iscsi_rpc.target_node_exists(client, ec.target_iqn):
+    targets = _ep_targets(ep)
+    target_iqn = targets.get("target_iqn", "")
+    if not target_iqn:
+        logger.warning("iSCSI endpoint %s has no target_iqn", ep.id)
+        return
+
+    lun_id = mapping.underlay_id
+
+    if not iscsi_rpc.target_node_exists(client, target_iqn):
         iscsi_rpc.create_target_node(
             client,
-            ec.target_iqn,
-            luns=[{"bdev_name": volume.bdev_name, "lun_id": mapping.lun_id}],
+            target_iqn,
+            luns=[{"bdev_name": volume.bdev_name, "lun_id": lun_id}],
         )
         return
 
-    existing_luns = iscsi_rpc.get_lun_ids_on_target(client, ec.target_iqn)
-    if mapping.lun_id not in existing_luns:
-        iscsi_rpc.add_lun(client, ec.target_iqn, volume.bdev_name, mapping.lun_id)
+    existing_luns = iscsi_rpc.get_lun_ids_on_target(client, target_iqn)
+    if lun_id not in existing_luns:
+        iscsi_rpc.add_lun(client, target_iqn, volume.bdev_name, lun_id)
     else:
-        logger.debug("LUN %d already attached to %s", mapping.lun_id, ec.target_iqn)
+        logger.debug("LUN %d already attached to %s", lun_id, target_iqn)
 
 
 def ensure_nvmef_mapping(
     client: SPDKClient,
     mapping: Mapping,
     volume: Volume,
-    ec: ExportContainer,
+    ep: TransportEndpoint,
 ) -> None:
-    """Ensure the volume's bdev is attached as the correct namespace in the subsystem."""
-    existing_nsids = nvmf_rpc.get_nsids(client, ec.target_nqn)
-    if mapping.ns_id not in existing_nsids:
-        nvmf_rpc.add_namespace(client, ec.target_nqn, volume.bdev_name, mapping.ns_id)
+    """Ensure the volume's bdev is attached as the correct namespace."""
+    targets = _ep_targets(ep)
+    target_nqn = targets.get("subsystem_nqn", "")
+    if not target_nqn:
+        logger.warning("NVMe-oF endpoint %s has no subsystem_nqn", ep.id)
+        return
+
+    nsid = mapping.underlay_id
+    existing_nsids = nvmf_rpc.get_nsids(client, target_nqn)
+    if nsid not in existing_nsids:
+        nvmf_rpc.add_namespace(client, target_nqn, volume.bdev_name, nsid)
     else:
-        logger.debug("NSID %d already in subsystem %s", mapping.ns_id, ec.target_nqn)
+        logger.debug("NSID %d already in subsystem %s", nsid, target_nqn)
+

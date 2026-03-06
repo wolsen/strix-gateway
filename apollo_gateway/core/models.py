@@ -1,5 +1,9 @@
 # FILE: apollo_gateway/core/models.py
-"""Pydantic request/response schemas and domain enums."""
+"""Pydantic request/response schemas and domain enums.
+
+Breaking change (v0.2): Subsystem → Array, ExportContainer → TransportEndpoint,
+Host stores initiator lists, Mapping carries persona + underlay endpoints.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class PoolBackendType(str, Enum):
@@ -27,32 +31,42 @@ class VolumeStatus(str, Enum):
 class Protocol(str, Enum):
     iscsi = "iscsi"
     nvmeof_tcp = "nvmeof_tcp"
+    fc = "fc"
+
+
+class DesiredState(str, Enum):
+    attached = "attached"
+    detached = "detached"
 
 
 # ---------------------------------------------------------------------------
-# Subsystem
+# Array (formerly Subsystem)
 # ---------------------------------------------------------------------------
 
-class SubsystemCreate(BaseModel):
+_DNS_LABEL_RE = __import__("re").compile(r"^[a-z][a-z0-9-]{0,62}$")
+
+
+class ArrayCreate(BaseModel):
     name: str
-    persona: str = "generic"
-    protocols_enabled: list[str] = ["iscsi", "nvmeof_tcp"]
-    # Overrides applied on top of persona defaults at query time
-    capability_profile: dict[str, Any] = {}
+    vendor: str = "generic"
+    profile: dict[str, Any] = {}
+
+    @field_validator("name")
+    @classmethod
+    def validate_dns_safe_name(cls, v: str) -> str:
+        if not _DNS_LABEL_RE.match(v):
+            raise ValueError(
+                "Array name must be DNS-label-safe: lowercase letters, "
+                "digits, hyphens; start with letter; max 63 chars"
+            )
+        return v
 
 
-class SubsystemUpdate(BaseModel):
-    persona: Optional[str] = None
-    protocols_enabled: Optional[list[str]] = None
-    capability_profile: Optional[dict[str, Any]] = None
-
-
-class SubsystemView(BaseModel):
+class ArrayView(BaseModel):
     id: str
     name: str
-    persona: str
-    protocols_enabled: list[str]
-    capability_profile: dict[str, Any]  # raw stored overrides
+    vendor: str
+    profile: dict[str, Any]
     created_at: datetime
     updated_at: datetime
 
@@ -60,11 +74,33 @@ class SubsystemView(BaseModel):
 
 
 class CapabilitiesView(BaseModel):
-    subsystem_id: str
-    subsystem_name: str
-    persona: str
-    protocols_enabled: list[str]
-    effective_profile: dict[str, Any]  # merged persona defaults + overrides
+    array_id: str
+    array_name: str
+    vendor: str
+    effective_profile: dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# Transport Endpoint
+# ---------------------------------------------------------------------------
+
+class TransportEndpointCreate(BaseModel):
+    protocol: Protocol
+    targets: dict[str, Any]
+    addresses: dict[str, Any] = {}
+    auth: dict[str, Any] = {"method": "none"}
+
+
+class TransportEndpointView(BaseModel):
+    id: str
+    array_id: str
+    protocol: Protocol
+    targets: dict[str, Any]
+    addresses: dict[str, Any]
+    auth: dict[str, Any]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # ---------------------------------------------------------------------------
@@ -76,13 +112,12 @@ class PoolCreate(BaseModel):
     backend_type: PoolBackendType
     size_mb: Optional[int] = None    # required for malloc
     aio_path: Optional[str] = None   # required for aio_file
-    subsystem: Optional[str] = None  # subsystem name or id; None → use "default"
 
 
 class PoolResponse(BaseModel):
     id: str
     name: str
-    subsystem_id: str
+    array_id: str
     backend_type: PoolBackendType
     size_mb: Optional[int] = None
     aio_path: Optional[str] = None
@@ -91,53 +126,86 @@ class PoolResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Volume
+# Volume (API exposes size_gb, DB stores size_mb)
 # ---------------------------------------------------------------------------
 
 class VolumeCreate(BaseModel):
     name: str
     pool_id: str
-    size_mb: int
+    size_gb: int
 
 
 class VolumeExtend(BaseModel):
-    new_size_mb: int
+    new_size_gb: int
 
 
 class VolumeResponse(BaseModel):
     id: str
     name: str
-    subsystem_id: str
+    array_id: str
     pool_id: str
-    size_mb: int
+    size_gb: int
     status: VolumeStatus
     bdev_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
+    @classmethod
+    def from_orm_volume(cls, vol) -> "VolumeResponse":
+        """Convert a DB Volume (which stores size_mb) to an API response (size_gb)."""
+        return cls(
+            id=vol.id,
+            name=vol.name,
+            array_id=vol.array_id,
+            pool_id=vol.pool_id,
+            size_gb=vol.size_mb // 1024 if vol.size_mb else 0,
+            status=VolumeStatus(vol.status),
+            bdev_name=vol.bdev_name,
+            created_at=vol.created_at,
+            updated_at=vol.updated_at,
+        )
+
 
 # ---------------------------------------------------------------------------
-# Host
+# Host (initiators only)
 # ---------------------------------------------------------------------------
 
 class HostCreate(BaseModel):
     name: str
-    iqn: Optional[str] = None  # iSCSI initiator IQN
-    nqn: Optional[str] = None  # NVMe-oF host NQN
+    initiators_iscsi_iqns: list[str] = []
+    initiators_nvme_host_nqns: list[str] = []
+    initiators_fc_wwpns: list[str] = []
 
 
 class HostUpdate(BaseModel):
-    iqn: Optional[str] = None
-    nqn: Optional[str] = None
+    initiators_iscsi_iqns: Optional[list[str]] = None
+    initiators_nvme_host_nqns: Optional[list[str]] = None
+    initiators_fc_wwpns: Optional[list[str]] = None
 
 
 class HostResponse(BaseModel):
     id: str
     name: str
-    iqn: Optional[str] = None
-    nqn: Optional[str] = None
+    initiators_iscsi_iqns: list[str] = []
+    initiators_nvme_host_nqns: list[str] = []
+    initiators_fc_wwpns: list[str] = []
+    created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_host(cls, host) -> "HostResponse":
+        import json
+        return cls(
+            id=host.id,
+            name=host.name,
+            initiators_iscsi_iqns=json.loads(host.initiators_iscsi_iqns),
+            initiators_nvme_host_nqns=json.loads(host.initiators_nvme_host_nqns),
+            initiators_fc_wwpns=json.loads(host.initiators_fc_wwpns),
+            created_at=host.created_at,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -145,36 +213,72 @@ class HostResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class MappingCreate(BaseModel):
-    volume_id: str
+    """Create a mapping.
+
+    Either provide explicit endpoint IDs (persona_endpoint_id +
+    underlay_endpoint_id) *or* protocol selectors (persona_protocol +
+    underlay_protocol) and the server will pick endpoints from the volume's
+    array.
+    """
     host_id: str
-    protocol: Protocol
+    volume_id: str
+    # Explicit endpoint IDs (option A)
+    persona_endpoint_id: Optional[str] = None
+    underlay_endpoint_id: Optional[str] = None
+    # Protocol selectors (option B — server picks endpoints)
+    persona_protocol: Optional[Protocol] = None
+    underlay_protocol: Optional[Protocol] = None
 
 
 class MappingResponse(BaseModel):
     id: str
-    subsystem_id: str
     volume_id: str
     host_id: str
-    export_container_id: str
-    protocol: Protocol
-    lun_id: Optional[int] = None
-    ns_id: Optional[int] = None
+    persona_endpoint_id: str
+    underlay_endpoint_id: str
+    lun_id: int
+    underlay_id: int
+    desired_state: DesiredState
+    revision: int
+    created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
 # ---------------------------------------------------------------------------
-# Connection info (OpenStack Cinder initialize_connection shapes)
+# Attachments view (compute-side agent polling payload)
 # ---------------------------------------------------------------------------
 
-class ConnectionInfoIscsi(BaseModel):
-    driver_volume_type: str = "iscsi"
-    data: dict[str, Any]
+class AttachmentPersona(BaseModel):
+    protocol: str
+    target_wwpns: list[str] = []
+    lun_id: int
 
 
-class ConnectionInfoNvmeof(BaseModel):
-    driver_volume_type: str = "nvmeof"
-    data: dict[str, Any]
+class AttachmentUnderlay(BaseModel):
+    protocol: str
+    targets: dict[str, Any]
+    addresses: dict[str, Any]
+    auth: dict[str, Any]
+    target_lun: Optional[int] = None
+    nsid: Optional[int] = None
+
+
+class AttachmentView(BaseModel):
+    attachment_id: str
+    volume_id: str
+    array_id: str
+    revision: int
+    desired_state: str
+    persona: AttachmentPersona
+    underlay: AttachmentUnderlay
+
+
+class AttachmentsResponse(BaseModel):
+    host_id: str
+    generated_at: datetime
+    attachments: list[AttachmentView]
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +300,7 @@ class DelayCreate(BaseModel):
 # ---------------------------------------------------------------------------
 
 class SvcRunRequest(BaseModel):
-    subsystem: str
+    array: str  # array name or id
     command: str
     # SSH audit metadata — populated by ForceCommand, absent in CLI use
     remote_user: str | None = None

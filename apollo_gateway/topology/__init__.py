@@ -1,8 +1,8 @@
 # FILE: apollo_gateway/topology/__init__.py
 """Topology specification package for Apollo Gateway.
 
-Provides YAML/TOML-driven declarative configuration of subsystems, pools,
-volumes, hosts, and mappings.  Typical usage::
+Provides YAML/TOML-driven declarative configuration of arrays, endpoints,
+pools, volumes, hosts, and mappings.  Typical usage::
 
     from apollo_gateway.topology.load import load_yaml
     from apollo_gateway.topology.validate import validate

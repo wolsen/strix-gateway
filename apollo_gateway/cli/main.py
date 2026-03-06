@@ -27,14 +27,16 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-subsystem_app = typer.Typer(help="Manage virtual storage subsystems", no_args_is_help=True)
+array_app = typer.Typer(help="Manage storage arrays", no_args_is_help=True)
+endpoint_app = typer.Typer(help="Manage transport endpoints on arrays", no_args_is_help=True)
 pool_app = typer.Typer(help="Manage storage pools", no_args_is_help=True)
 volume_app = typer.Typer(help="Manage volumes", no_args_is_help=True)
 host_app = typer.Typer(help="Manage hosts (initiator endpoints)", no_args_is_help=True)
 map_app = typer.Typer(help="Manage volume-to-host mappings", no_args_is_help=True)
 svc_app = typer.Typer(help="IBM SVC façade commands", no_args_is_help=True)
 
-app.add_typer(subsystem_app, name="subsystem")
+app.add_typer(array_app, name="array")
+app.add_typer(endpoint_app, name="endpoint")
 app.add_typer(pool_app, name="pool")
 app.add_typer(volume_app, name="volume")
 app.add_typer(host_app, name="host")
@@ -119,7 +121,7 @@ def main_callback(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose / debug output"),
     timeout: int = typer.Option(30, "--timeout", help="HTTP request timeout in seconds"),
 ):
-    """Apollo Gateway CLI — manage subsystems, pools, volumes, hosts, and mappings."""
+    """Apollo Gateway CLI — manage arrays, pools, volumes, hosts, and mappings."""
     _state.url = url or "http://localhost:8080"
     _state.output = output
     _state.quiet = quiet
@@ -134,11 +136,11 @@ def main_callback(
 @app.command()
 @_handle
 def status(
-    subsystem: Optional[str] = typer.Option(
-        None, "--subsystem", "-s", help="Filter by subsystem name"
+    array: Optional[str] = typer.Option(
+        None, "--array", "-a", help="Filter by array name"
     ),
 ):
-    """Show API reachability and subsystem summary."""
+    """Show API reachability and array summary."""
     c = _client()
 
     # Probe API health
@@ -148,23 +150,22 @@ def status(
         typer.echo("API unreachable", err=True)
         raise typer.Exit(2)
 
-    subs = c.list_subsystems()
-    if subsystem:
-        subs = [s for s in subs if s["name"] == subsystem]
-        if not subs:
-            typer.echo(f"Subsystem '{subsystem}' not found", err=True)
+    arrays = c.list_arrays()
+    if array:
+        arrays = [a for a in arrays if a["name"] == array]
+        if not arrays:
+            typer.echo(f"Array '{array}' not found", err=True)
             raise typer.Exit(1)
 
     summary: list[dict] = []
-    for s in subs:
-        pools = c.list_pools(subsystem=s["name"])
-        volumes = c.list_volumes(subsystem=s["name"])
-        mappings = c.list_mappings(subsystem=s["name"])
+    for a in arrays:
+        pools = c.list_pools(array=a["name"])
+        volumes = c.list_volumes(array=a["name"])
+        mappings = c.list_mappings(array=a["name"])
         summary.append(
             {
-                "name": s["name"],
-                "persona": s["persona"],
-                "protocols": ", ".join(s.get("protocols_enabled", [])),
+                "name": a["name"],
+                "vendor": a.get("vendor", ""),
                 "pools": len(pools),
                 "volumes": len(volumes),
                 "mappings": len(mappings),
@@ -176,89 +177,84 @@ def status(
     render(
         summary,
         _state.output,
-        columns=["name", "persona", "protocols", "pools", "volumes", "mappings"],
+        columns=["name", "vendor", "pools", "volumes", "mappings"],
     )
 
 
 # =====================================================================
-# subsystem
+# array
 # =====================================================================
 
-@subsystem_app.command("ls")
+@array_app.command("ls")
 @_handle
-def subsystem_ls():
-    """List all subsystems."""
+def array_ls():
+    """List all arrays."""
     c = _client()
-    subs = c.list_subsystems()
+    arrays = c.list_arrays()
     rows = [
         {
-            "name": s["name"],
-            "persona": s["persona"],
-            "protocols": ", ".join(s.get("protocols_enabled", [])),
+            "name": a["name"],
+            "vendor": a.get("vendor", ""),
         }
-        for s in subs
+        for a in arrays
     ]
-    render(rows, _state.output, columns=["name", "persona", "protocols"])
+    render(rows, _state.output, columns=["name", "vendor"])
 
 
-@subsystem_app.command("show")
+@array_app.command("show")
 @_handle
-def subsystem_show(name: str = typer.Argument(..., help="Subsystem name or ID")):
-    """Show full details for a subsystem."""
+def array_show(name: str = typer.Argument(..., help="Array name or ID")):
+    """Show full details for an array."""
     c = _client()
-    sub = c.get_subsystem(name)
+    arr = c.get_array(name)
     fmt = _state.output if _state.output != OutputFormat.table else OutputFormat.yaml
-    render(sub, fmt)
+    render(arr, fmt)
 
 
-@subsystem_app.command("create")
+@array_app.command("create")
 @_handle
-def subsystem_create(
-    name: str = typer.Argument(..., help="Subsystem name"),
-    persona: str = typer.Option("generic", "--persona", help="Persona type"),
-    protocol: Optional[list[str]] = typer.Option(
-        None, "--protocol", help="Enabled protocol (repeatable)"
-    ),
+def array_create(
+    name: str = typer.Argument(..., help="Array name"),
+    vendor: str = typer.Option("generic", "--vendor", help="Vendor / persona type"),
 ):
-    """Create a new subsystem."""
+    """Create a new array."""
     c = _client()
-    protocols = protocol if protocol else ["iscsi", "nvmeof_tcp"]
-    result = c.create_subsystem(name, persona, protocols)
+    result = c.create_array(name, vendor)
     if not _state.quiet:
-        typer.echo(f"Created subsystem '{result['name']}'")
+        typer.echo(f"Created array '{result['name']}'")
     if _state.output != OutputFormat.table:
         render(result, _state.output)
 
 
-@subsystem_app.command("rm")
+@array_app.command("rm")
 @_handle
-def subsystem_rm(
-    name: str = typer.Argument(..., help="Subsystem name or ID"),
+def array_rm(
+    name: str = typer.Argument(..., help="Array name or ID"),
     force: bool = typer.Option(False, "--force", help="Force deletion"),
 ):
-    """Delete a subsystem."""
+    """Delete an array."""
     c = _client()
-    c.delete_subsystem(name, force=force)
+    c.delete_array(name, force=force)
     if not _state.quiet:
-        typer.echo(f"Deleted subsystem '{name}'")
+        typer.echo(f"Deleted array '{name}'")
 
 
-@subsystem_app.command("capabilities")
+@array_app.command("capabilities")
 @_handle
-def subsystem_capabilities(
-    name: str = typer.Argument(..., help="Subsystem name or ID"),
+def array_capabilities(
+    name: str = typer.Argument(..., help="Array name or ID"),
 ):
-    """Show the effective capability profile for a subsystem."""
+    """Show the effective capability profile for an array."""
     c = _client()
     caps = c.get_capabilities(name)
     fmt = _state.output if _state.output != OutputFormat.table else OutputFormat.yaml
     render(caps, fmt)
 
 
-@subsystem_app.command("set-capabilities")
+@array_app.command("set-capabilities")
 @_handle
-def subsystem_set_capabilities(
-    name: str = typer.Argument(..., help="Subsystem name or ID"),
+def array_set_capabilities(
+    name: str = typer.Argument(..., help="Array name or ID"),
     file: str = typer.Option(
         ..., "-f", "--file", help="Capability profile file (YAML or TOML)"
     ),
@@ -266,7 +262,7 @@ def subsystem_set_capabilities(
         False, "--merge", help="Deep-merge into existing profile instead of replacing"
     ),
 ):
-    """Update the capability profile for a subsystem."""
+    """Update the capability profile for an array."""
     from apollo_gateway.cli.topo.load import load_capability_file
 
     data = load_capability_file(file)
@@ -277,7 +273,7 @@ def subsystem_set_capabilities(
         existing = current.get("effective_profile", {})
         data = _deep_merge(existing, data)
 
-    result = c.update_subsystem(name, capability_profile=data)
+    result = c.update_array(name, profile=data)
     if not _state.quiet:
         typer.echo(f"Updated capabilities for '{name}'")
     if _state.output != OutputFormat.table:
@@ -296,17 +292,67 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 # =====================================================================
+# endpoint
+# =====================================================================
+
+@endpoint_app.command("ls")
+@_handle
+def endpoint_ls(
+    array: str = typer.Option(..., "--array", "-a", help="Array name or ID"),
+):
+    """List transport endpoints on an array."""
+    c = _client()
+    eps = c.list_endpoints(array)
+    rows = [
+        {
+            "id": e["id"],
+            "protocol": e.get("protocol", ""),
+        }
+        for e in eps
+    ]
+    render(rows, _state.output, columns=["id", "protocol"])
+
+
+@endpoint_app.command("create")
+@_handle
+def endpoint_create(
+    array: str = typer.Option(..., "--array", "-a", help="Array name or ID"),
+    protocol: str = typer.Option(..., "--protocol", "-p", help="Protocol: iscsi, nvmeof_tcp, fc"),
+):
+    """Create a transport endpoint on an array."""
+    c = _client()
+    result = c.create_endpoint(array, protocol)
+    if not _state.quiet:
+        typer.echo(f"Created {protocol} endpoint '{result['id']}'")
+    if _state.output != OutputFormat.table:
+        render(result, _state.output)
+
+
+@endpoint_app.command("rm")
+@_handle
+def endpoint_rm(
+    array: str = typer.Option(..., "--array", "-a", help="Array name or ID"),
+    endpoint_id: str = typer.Argument(..., help="Endpoint ID"),
+):
+    """Delete a transport endpoint."""
+    c = _client()
+    c.delete_endpoint(array, endpoint_id)
+    if not _state.quiet:
+        typer.echo(f"Deleted endpoint '{endpoint_id}'")
+
+
+# =====================================================================
 # pool
 # =====================================================================
 
 @pool_app.command("ls")
 @_handle
 def pool_ls(
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
 ):
-    """List pools in a subsystem."""
+    """List pools in an array."""
     c = _client()
-    pools = c.list_pools(subsystem=subsystem)
+    pools = c.list_pools(array=array)
     rows = [
         {
             "name": p["name"],
@@ -322,11 +368,11 @@ def pool_ls(
 @_handle
 def pool_show(
     pool: str = typer.Argument(..., help="Pool name"),
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
 ):
     """Show pool details."""
     c = _client()
-    p = c.resolve_pool(pool, subsystem)
+    p = c.resolve_pool(pool, array)
     fmt = _state.output if _state.output != OutputFormat.table else OutputFormat.yaml
     render(p, fmt)
 
@@ -335,14 +381,14 @@ def pool_show(
 @_handle
 def pool_create(
     pool: str = typer.Argument(..., help="Pool name"),
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
     backend: str = typer.Option(..., "--backend", "-b", help="Backend type: malloc or aio"),
     size_gb: float = typer.Option(..., "--size-gb", help="Pool size in GB"),
     aio_path: Optional[str] = typer.Option(None, "--aio-path", help="File path for AIO backend"),
 ):
     """Create a new storage pool."""
     c = _client()
-    result = c.create_pool(pool, subsystem, backend, size_gb, aio_path)
+    result = c.create_pool(pool, array, backend, size_gb, aio_path)
     if not _state.quiet:
         typer.echo(f"Created pool '{result['name']}'")
     if _state.output != OutputFormat.table:
@@ -353,11 +399,11 @@ def pool_create(
 @_handle
 def pool_rm(
     pool: str = typer.Argument(..., help="Pool name"),
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
 ):
     """Delete a pool."""
     c = _client()
-    p = c.resolve_pool(pool, subsystem)
+    p = c.resolve_pool(pool, array)
     c.delete_pool(p["id"])
     if not _state.quiet:
         typer.echo(f"Deleted pool '{pool}'")
@@ -370,15 +416,15 @@ def pool_rm(
 @volume_app.command("ls")
 @_handle
 def volume_ls(
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
 ):
-    """List volumes in a subsystem."""
+    """List volumes in an array."""
     c = _client()
-    volumes = c.list_volumes(subsystem=subsystem)
+    volumes = c.list_volumes(array=array)
     rows = [
         {
             "name": v["name"],
-            "size_gb": round(v["size_mb"] / 1024, 1),
+            "size_gb": v.get("size_gb", ""),
             "status": v.get("status", ""),
             "pool": v.get("pool_id", ""),
         }
@@ -391,11 +437,11 @@ def volume_ls(
 @_handle
 def volume_show(
     name: str = typer.Argument(..., help="Volume name"),
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
 ):
     """Show volume details."""
     c = _client()
-    v = c.resolve_volume(name, subsystem)
+    v = c.resolve_volume(name, array)
     fmt = _state.output if _state.output != OutputFormat.table else OutputFormat.yaml
     render(v, fmt)
 
@@ -406,25 +452,24 @@ def volume_create(
     name: str = typer.Argument(..., help="Volume name"),
     pool: str = typer.Option(..., "--pool", "-p", help="Pool name"),
     size_gb: float = typer.Option(..., "--size-gb", help="Volume size in GB"),
-    thin: Optional[bool] = typer.Option(None, "--thin", help="Enable thin provisioning"),
-    subsystem: Optional[str] = typer.Option(
+    array: Optional[str] = typer.Option(
         None,
-        "--subsystem",
-        "-s",
-        help="Subsystem name (inferred from pool when omitted)",
+        "--array",
+        "-a",
+        help="Array name (inferred from pool when omitted)",
     ),
 ):
     """Create a new volume."""
     c = _client()
 
-    if subsystem:
-        p = c.resolve_pool(pool, subsystem)
+    if array:
+        p = c.resolve_pool(pool, array)
     else:
         # Scan all pools to find the named one
         all_pools = c.list_pools()
         p = next((x for x in all_pools if x["name"] == pool), None)
         if p is None:
-            raise ValidationError(f"Pool '{pool}' not found in any subsystem")
+            raise ValidationError(f"Pool '{pool}' not found in any array")
 
     result = c.create_volume(name, p["id"], size_gb)
     if not _state.quiet:
@@ -437,11 +482,11 @@ def volume_create(
 @_handle
 def volume_rm(
     name: str = typer.Argument(..., help="Volume name"),
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
 ):
     """Delete a volume."""
     c = _client()
-    v = c.resolve_volume(name, subsystem)
+    v = c.resolve_volume(name, array)
     c.delete_volume(v["id"])
     if not _state.quiet:
         typer.echo(f"Deleted volume '{name}'")
@@ -451,12 +496,12 @@ def volume_rm(
 @_handle
 def volume_extend(
     name: str = typer.Argument(..., help="Volume name"),
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
     size_gb: float = typer.Option(..., "--size-gb", help="New total size in GB"),
 ):
     """Extend (grow) a volume."""
     c = _client()
-    v = c.resolve_volume(name, subsystem)
+    v = c.resolve_volume(name, array)
     result = c.extend_volume(v["id"], size_gb)
     if not _state.quiet:
         typer.echo(f"Extended volume '{name}' to {size_gb} GB")
@@ -477,12 +522,13 @@ def host_ls():
     rows = [
         {
             "name": h["name"],
-            "iqn": h.get("iqn") or "",
-            "nqn": h.get("nqn") or "",
+            "iqns": ",".join(h.get("iqns") or []),
+            "nqns": ",".join(h.get("nqns") or []),
+            "wwpns": ",".join(h.get("wwpns") or []),
         }
         for h in hosts
     ]
-    render(rows, _state.output, columns=["name", "iqn", "nqn"])
+    render(rows, _state.output, columns=["name", "iqns", "nqns", "wwpns"])
 
 
 @host_app.command("show")
@@ -522,20 +568,25 @@ def host_rm(name: str = typer.Argument(..., help="Host name")):
 @_handle
 def host_add_initiator(
     name: str = typer.Argument(..., help="Host name"),
-    iscsi_iqn: Optional[str] = typer.Option(None, "--iscsi-iqn", help="iSCSI initiator IQN"),
-    nvme_nqn: Optional[str] = typer.Option(None, "--nvme-nqn", help="NVMe-oF host NQN"),
+    iscsi_iqn: Optional[str] = typer.Option(None, "--iscsi-iqn", help="iSCSI initiator IQN to add"),
+    nvme_nqn: Optional[str] = typer.Option(None, "--nvme-nqn", help="NVMe-oF host NQN to add"),
+    fc_wwpn: Optional[str] = typer.Option(None, "--fc-wwpn", help="FC WWPN to add"),
 ):
     """Add an initiator to a host."""
-    if not iscsi_iqn and not nvme_nqn:
-        raise ValidationError("Provide at least one of --iscsi-iqn or --nvme-nqn")
+    if not iscsi_iqn and not nvme_nqn and not fc_wwpn:
+        raise ValidationError("Provide at least one of --iscsi-iqn, --nvme-nqn, or --fc-wwpn")
     c = _client()
     h = c.resolve_host(name)
-    update: dict = {}
-    if iscsi_iqn:
-        update["iqn"] = iscsi_iqn
-    if nvme_nqn:
-        update["nqn"] = nvme_nqn
-    c.update_host(h["id"], **update)
+    iqns: list = list(h.get("iqns") or [])
+    nqns: list = list(h.get("nqns") or [])
+    wwpns: list = list(h.get("wwpns") or [])
+    if iscsi_iqn and iscsi_iqn not in iqns:
+        iqns.append(iscsi_iqn)
+    if nvme_nqn and nvme_nqn not in nqns:
+        nqns.append(nvme_nqn)
+    if fc_wwpn and fc_wwpn not in wwpns:
+        wwpns.append(fc_wwpn)
+    c.update_host(h["id"], iqns=iqns, nqns=nqns, wwpns=wwpns)
     if not _state.quiet:
         typer.echo(f"Updated host '{name}'")
 
@@ -546,20 +597,56 @@ def host_rm_initiator(
     name: str = typer.Argument(..., help="Host name"),
     iscsi_iqn: Optional[str] = typer.Option(None, "--iscsi-iqn", help="iSCSI IQN to remove"),
     nvme_nqn: Optional[str] = typer.Option(None, "--nvme-nqn", help="NVMe NQN to remove"),
+    fc_wwpn: Optional[str] = typer.Option(None, "--fc-wwpn", help="FC WWPN to remove"),
 ):
     """Remove an initiator from a host."""
-    if not iscsi_iqn and not nvme_nqn:
-        raise ValidationError("Provide at least one of --iscsi-iqn or --nvme-nqn")
+    if not iscsi_iqn and not nvme_nqn and not fc_wwpn:
+        raise ValidationError("Provide at least one of --iscsi-iqn, --nvme-nqn, or --fc-wwpn")
     c = _client()
     h = c.resolve_host(name)
-    update: dict = {}
-    if iscsi_iqn:
-        update["iqn"] = None
-    if nvme_nqn:
-        update["nqn"] = None
-    c.update_host(h["id"], **update)
+    iqns: list = list(h.get("iqns") or [])
+    nqns: list = list(h.get("nqns") or [])
+    wwpns: list = list(h.get("wwpns") or [])
+    if iscsi_iqn and iscsi_iqn in iqns:
+        iqns.remove(iscsi_iqn)
+    if nvme_nqn and nvme_nqn in nqns:
+        nqns.remove(nvme_nqn)
+    if fc_wwpn and fc_wwpn in wwpns:
+        wwpns.remove(fc_wwpn)
+    c.update_host(h["id"], iqns=iqns, nqns=nqns, wwpns=wwpns)
     if not _state.quiet:
         typer.echo(f"Removed initiator(s) from host '{name}'")
+
+
+@host_app.command("attachments")
+@_handle
+def host_attachments(
+    name: str = typer.Argument(..., help="Host name"),
+):
+    """Show storage attachments for a host."""
+    c = _client()
+    h = c.resolve_host(name)
+    data = c.get_host_attachments(h["id"])
+    attachments = data.get("attachments", [])
+    if not attachments:
+        if not _state.quiet:
+            typer.echo("No attachments")
+        return
+    rows = [
+        {
+            "volume": a.get("volume_name", ""),
+            "persona_protocol": a.get("persona", {}).get("protocol", ""),
+            "persona_targets": ",".join(a.get("persona", {}).get("targets", [])),
+            "underlay_protocol": a.get("underlay", {}).get("protocol", ""),
+            "lun": a.get("lun_id") or "",
+        }
+        for a in attachments
+    ]
+    render(
+        rows,
+        _state.output,
+        columns=["volume", "persona_protocol", "persona_targets", "underlay_protocol", "lun"],
+    )
 
 
 # =====================================================================
@@ -569,41 +656,50 @@ def host_rm_initiator(
 @map_app.command("ls")
 @_handle
 def map_ls(
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
 ):
-    """List mappings in a subsystem."""
+    """List mappings in an array."""
     c = _client()
-    mappings = c.list_mappings(subsystem=subsystem)
+    mappings = c.list_mappings(array=array)
     rows = [
         {
             "host": m.get("host_id", ""),
             "volume": m.get("volume_id", ""),
-            "protocol": m.get("protocol", ""),
+            "persona_ep": m.get("persona_endpoint_id", ""),
+            "underlay_ep": m.get("underlay_endpoint_id", ""),
             "lun": m.get("lun_id") or "",
-            "nsid": m.get("ns_id") or "",
+            "desired_state": m.get("desired_state", ""),
         }
         for m in mappings
     ]
-    render(rows, _state.output, columns=["host", "volume", "protocol", "lun", "nsid"])
+    render(rows, _state.output, columns=["host", "volume", "persona_ep", "underlay_ep", "lun", "desired_state"])
 
 
 @map_app.command("create")
 @_handle
 def map_create(
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
     host: str = typer.Option(..., "--host", help="Host name"),
     volume: str = typer.Option(..., "--volume", help="Volume name"),
-    protocol: str = typer.Option(
-        ..., "--protocol", "-p", help="Protocol: iscsi or nvmeof_tcp"
+    persona_endpoint: str = typer.Option(
+        ..., "--persona-endpoint", help="Persona endpoint name or ID"
+    ),
+    underlay_endpoint: str = typer.Option(
+        ..., "--underlay-endpoint", help="Underlay endpoint name or ID"
     ),
 ):
     """Create a volume-to-host mapping."""
     c = _client()
     h = c.resolve_host(host)
-    v = c.resolve_volume(volume, subsystem)
-    result = c.create_mapping(v["id"], h["id"], protocol)
+    v = c.resolve_volume(volume, array)
+    result = c.create_mapping(
+        volume_id=v["id"],
+        host_id=h["id"],
+        persona_endpoint_id=persona_endpoint,
+        underlay_endpoint_id=underlay_endpoint,
+    )
     if not _state.quiet:
-        typer.echo(f"Created mapping {host}\u2192{volume} ({protocol})")
+        typer.echo(f"Created mapping {host}\u2192{volume}")
     if _state.output != OutputFormat.table:
         render(result, _state.output)
 
@@ -611,34 +707,16 @@ def map_create(
 @map_app.command("rm")
 @_handle
 def map_rm(
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
+    array: str = typer.Option(..., "--array", "-a", help="Array name"),
     host: str = typer.Option(..., "--host", help="Host name"),
     volume: str = typer.Option(..., "--volume", help="Volume name"),
 ):
     """Delete a mapping."""
     c = _client()
-    m = c.resolve_mapping(host, volume, subsystem)
+    m = c.resolve_mapping(host, volume, array)
     c.delete_mapping(m["id"])
     if not _state.quiet:
         typer.echo(f"Deleted mapping {host}\u2192{volume}")
-
-
-# =====================================================================
-# connection-info  (top-level command)
-# =====================================================================
-
-@app.command("connection-info")
-@_handle
-def connection_info(
-    subsystem: str = typer.Option(..., "--subsystem", "-s", help="Subsystem name"),
-    host: str = typer.Option(..., "--host", help="Host name"),
-    volume: str = typer.Option(..., "--volume", help="Volume name"),
-):
-    """Get Cinder-style connection info for a mapping."""
-    c = _client()
-    m = c.resolve_mapping(host, volume, subsystem)
-    info = c.get_connection_info(m["id"])
-    render(info, _state.output)
 
 
 # =====================================================================
@@ -729,15 +807,15 @@ def smoke_cmd(
 @svc_app.command("run")
 @_handle
 def svc_run(
-    subsystem: str = typer.Option(
-        ..., "--subsystem", "-s", help="Subsystem name (required)"
+    array: str = typer.Option(
+        ..., "--array", "-a", help="Array name (required)"
     ),
     command: str = typer.Argument(
         ..., help='SVC command string, e.g. "svcinfo lssystem"'
     ),
 ):
     """Run an IBM SVC façade command via the gateway API."""
-    result = _client().svc_run(subsystem, command)
+    result = _client().svc_run(array, command)
     if result.get("stdout"):
         sys.stdout.write(result["stdout"])
     if result.get("stderr"):

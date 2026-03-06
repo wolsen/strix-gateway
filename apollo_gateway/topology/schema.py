@@ -1,23 +1,29 @@
 # FILE: apollo_gateway/topology/schema.py
 """Pydantic models for the Apollo Gateway topology specification.
 
-A topology file declares subsystems, pools, volumes, hosts, and mappings
-in a single YAML or TOML document.  Example (YAML)::
+A topology file declares arrays, endpoints, pools, volumes, hosts, and
+mappings in a single YAML or TOML document.  Example (YAML)::
 
-    subsystems:
+    arrays:
       - name: svc-a
-        persona: ibm_svc
-        protocols: [iscsi]
+        vendor: ibm_svc
+        endpoints:
+          - protocol: iscsi
+            targets: {"target_iqn": "iqn.2024-01.com.apollo:svc-a"}
+            addresses: {"portals": ["10.0.0.1:3260"]}
+          - protocol: fc
+            targets: {"target_wwpns": ["50:00:00:00:00:00:00:01"]}
 
     pools:
       - name: gold
-        subsystem: svc-a
+        array: svc-a
         backend: malloc
         size_gb: 100
 
     hosts:
       - name: compute-01
         iqns: ["iqn.1993-08.org.debian:01:abc123"]
+        wwpns: ["21:00:00:00:00:00:00:01"]
 
     volumes:
       - name: vol-001
@@ -37,30 +43,29 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, model_validator
 
 
-class CapabilityProfileOverride(BaseModel):
-    """Partial capability profile override for use in topology specs."""
+class EndpointSpec(BaseModel):
+    """Transport endpoint declared inline on an array."""
 
-    model: Optional[str] = None
-    version: Optional[str] = None
-    features: dict[str, Any] = {}
-    limits: dict[str, Any] = {}
-    quirks: dict[str, Any] = {}
+    protocol: str                            # "iscsi" | "nvmeof_tcp" | "fc"
+    targets: dict[str, Any] = {}             # e.g. {"target_iqn": "..."} or {"target_wwpns": [...]}
+    addresses: dict[str, Any] = {}           # e.g. {"portals": ["ip:port"]}
+    auth: dict[str, Any] = {"method": "none"}
 
 
-class SubsystemSpec(BaseModel):
-    """Specification for one virtual storage subsystem."""
+class ArraySpec(BaseModel):
+    """Specification for one storage array (real or emulated)."""
 
     name: str
-    persona: str = "generic"
-    protocols: list[str] = ["iscsi", "nvmeof_tcp"]
-    capability_profile: Optional[CapabilityProfileOverride] = None
+    vendor: str = "generic"
+    profile: dict[str, Any] = {}             # capability profile overrides
+    endpoints: list[EndpointSpec] = []       # pre-declared transport endpoints
 
 
 class PoolSpec(BaseModel):
-    """Specification for a storage pool within a subsystem."""
+    """Specification for a storage pool within an array."""
 
     name: str
-    subsystem: str              # subsystem name (must be declared in subsystems list)
+    array: str                  # array name (must be declared in arrays list)
     backend: Literal["malloc", "aio"] = "malloc"
     size_gb: float              # used for malloc backend
     aio_path: Optional[str] = None  # required when backend == "aio"
@@ -77,7 +82,7 @@ class VolumeSpec(BaseModel):
 
     name: str
     size_gb: float
-    pool: str           # pool name (subsystem inferred from pool.subsystem)
+    pool: str           # pool name (array inferred from pool.array)
 
 
 class HostSpec(BaseModel):
@@ -86,6 +91,7 @@ class HostSpec(BaseModel):
     name: str
     iqns: list[str] = []    # iSCSI initiator IQNs
     nqns: list[str] = []    # NVMe-oF host NQNs
+    wwpns: list[str] = []   # FC initiator WWPNs
 
 
 class MappingSpec(BaseModel):
@@ -93,13 +99,13 @@ class MappingSpec(BaseModel):
 
     host: str       # host name (must exist in hosts list)
     volume: str     # volume name (must exist in volumes list)
-    protocol: str   # e.g. "iscsi" or "nvmeof_tcp"
+    protocol: str   # e.g. "iscsi", "nvmeof_tcp", or "fc"
 
 
 class TopologySpec(BaseModel):
     """Root model for a complete Apollo Gateway topology specification."""
 
-    subsystems: list[SubsystemSpec] = []
+    arrays: list[ArraySpec] = []
     pools: list[PoolSpec] = []
     hosts: list[HostSpec] = []
     volumes: list[VolumeSpec] = []

@@ -14,37 +14,32 @@ from pydantic import BaseModel, model_validator
 
 
 # ------------------------------------------------------------------
-# Capability profile (inline in topology)
-# ------------------------------------------------------------------
-
-class CapabilityProfileSpec(BaseModel):
-    """Partial capability profile override carried inside a topology file."""
-
-    model: Optional[str] = None
-    version: Optional[str] = None
-    features: dict[str, Any] = {}
-    limits: dict[str, Any] = {}
-    quirks: dict[str, Any] = {}
-
-
-# ------------------------------------------------------------------
 # Resource specs
 # ------------------------------------------------------------------
 
-class SubsystemSpec(BaseModel):
-    """Specification for one virtual storage subsystem."""
+class EndpointSpec(BaseModel):
+    """Transport endpoint declared inline on an array."""
+
+    protocol: str
+    targets: dict[str, Any] = {}
+    addresses: dict[str, Any] = {}
+    auth: dict[str, Any] = {"method": "none"}
+
+
+class ArraySpec(BaseModel):
+    """Specification for one storage array (real or emulated)."""
 
     name: str
-    persona: str = "generic"
-    protocols: list[str] = ["iscsi", "nvmeof_tcp"]
-    capability_profile: Optional[CapabilityProfileSpec] = None
+    vendor: str = "generic"
+    profile: dict[str, Any] = {}
+    endpoints: list[EndpointSpec] = []
 
 
 class PoolSpec(BaseModel):
-    """Specification for a storage pool within a subsystem."""
+    """Specification for a storage pool within an array."""
 
     name: str
-    subsystem: str
+    array: str
     backend: Literal["malloc", "aio"] = "malloc"
     size_gb: float
     aio_path: Optional[str] = None
@@ -61,18 +56,9 @@ class HostSpec(BaseModel):
     """Specification for a storage host (initiator endpoints)."""
 
     name: str
-    initiators: dict[str, list[str]] = {}
-    # Convenience aliases compatible with existing topology schemas
     iqns: list[str] = []
     nqns: list[str] = []
-
-    @model_validator(mode="after")
-    def _normalise_initiators(self) -> HostSpec:
-        if self.iqns and "iscsi" not in self.initiators:
-            self.initiators["iscsi"] = list(self.iqns)
-        if self.nqns and "nvme" not in self.initiators:
-            self.initiators["nvme"] = list(self.nqns)
-        return self
+    wwpns: list[str] = []
 
 
 class VolumeSpec(BaseModel):
@@ -113,7 +99,7 @@ class DelaySpec(BaseModel):
 class TopologyFile(BaseModel):
     """Root model for a complete Apollo Gateway topology file."""
 
-    subsystems: list[SubsystemSpec] = []
+    arrays: list[ArraySpec] = []
     pools: list[PoolSpec] = []
     hosts: list[HostSpec] = []
     volumes: list[VolumeSpec] = []

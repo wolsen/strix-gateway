@@ -19,5 +19,20 @@ class Settings(BaseSettings):
 
     api_base_url: str = "http://localhost:8080"
 
+    # Vhost multiplexing
+    vhost_enabled: bool = False
+    vhost_domain: str = ""
+    vhost_hostname_override: str = ""
+    vhost_require_match: bool = True
+
+    # TLS
+    tls_mode: str = "per-array"
+    tls_rotate_before_days: int = 30
+    tls_dir: str = "./tls"
+
+    # Bind (used by server.py when vhost_enabled)
+    bind_https_port: int = 443
+    bind_http_port: int = 0
+
 
 settings = Settings()

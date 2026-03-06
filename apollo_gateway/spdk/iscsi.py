@@ -59,7 +59,7 @@ def ensure_initiator_group(client: SPDKClient) -> None:
     client.call("iscsi_create_initiator_group", {
         "tag": _INITIATOR_GROUP_TAG,
         "initiators": ["ANY"],
-        "netmasks": ["0.0.0.0/0"],
+        "netmasks": ["ANY"],
     })
 
 

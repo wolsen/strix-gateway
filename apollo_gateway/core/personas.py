@@ -121,7 +121,7 @@ def get_persona_defaults(persona: str) -> CapabilityProfile:
 def merge_profile(persona: str, overrides: dict[str, Any] | None) -> CapabilityProfile:
     """Deep-merge *overrides* on top of the defaults for *persona*.
 
-    *overrides* is the raw dict stored in ``Subsystem.capability_profile``.
+    *overrides* is the raw dict stored in ``Array.profile``.
     Unset keys retain the persona default.  Returns a fully populated
     :class:`CapabilityProfile`.
     """

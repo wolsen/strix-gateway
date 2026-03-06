@@ -9,13 +9,14 @@ It returns the text that should be written to stdout (may be empty for
 ``svctask`` commands that succeed silently).  On failure it raises a
 :class:`~apollo_gateway.compat.ibm_svc.errors.SvcError` subclass.
 
-All query handlers filter by ``ctx.subsystem_id`` so that two subsystems
+All query handlers filter by ``ctx.array_id`` so that two arrays
 may share pool/volume names without collision.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
 import sys
 from dataclasses import dataclass, field
@@ -25,8 +26,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apollo_gateway.config import settings as _settings
-from apollo_gateway.core.db import ExportContainer, Host, Mapping, Pool, Volume
-from apollo_gateway.core.models import Protocol, VolumeStatus
+from apollo_gateway.core.db import Host, Mapping, Pool, TransportEndpoint, Volume
+from apollo_gateway.core.models import DesiredState, Protocol, VolumeStatus
 from apollo_gateway.spdk import iscsi as iscsi_rpc
 from apollo_gateway.spdk.ensure import (
     allocate_lun,
@@ -59,16 +60,15 @@ logger = logging.getLogger("apollo_gateway.compat.ibm_svc")
 class SvcContext:
     """Execution context passed to every handler.
 
-    All handlers must filter DB queries by ``subsystem_id`` to provide
-    isolation between subsystems.
+    All handlers must filter DB queries by ``array_id`` to provide
+    isolation between arrays.
     """
 
     session: AsyncSession
     spdk: SPDKClient
-    subsystem_id: str
-    subsystem_name: str
+    array_id: str
+    array_name: str
     effective_profile: dict = field(default_factory=dict)
-    protocols_enabled: list[str] = field(default_factory=lambda: ["iscsi", "nvmeof_tcp"])
 
 
 # ---------------------------------------------------------------------------
@@ -105,10 +105,19 @@ def _volume_status(status: str) -> str:
 
 
 def _host_iqns(host: Host) -> list[str]:
-    """Return all IQNs stored in host.iqn (comma-separated)."""
-    if not host.iqn:
+    """Return all IQNs stored in host.initiators_iscsi_iqns (JSON list)."""
+    raw = host.initiators_iscsi_iqns
+    if not raw:
         return []
-    return [q.strip() for q in host.iqn.split(",") if q.strip()]
+    return _json.loads(raw) if isinstance(raw, str) else raw
+
+
+def _host_wwpns(host: Host) -> list[str]:
+    """Return all FC WWPNs stored in host.initiators_fc_wwpns (JSON list)."""
+    raw = host.initiators_fc_wwpns
+    if not raw:
+        return []
+    return _json.loads(raw) if isinstance(raw, str) else raw
 
 
 # ---------------------------------------------------------------------------
@@ -123,9 +132,9 @@ async def _lssystem(ctx: SvcContext, pc: ParsedCommand) -> str:
     version = profile.get("version", "8.4.0.0")
     model = profile.get("model", "apollo-gateway")
 
-    # Aggregate capacity from pools/volumes in this subsystem
+    # Aggregate capacity from pools/volumes in this array
     result = await session.execute(
-        select(Pool).where(Pool.subsystem_id == ctx.subsystem_id)
+        select(Pool).where(Pool.array_id == ctx.array_id)
     )
     pools = result.scalars().all()
     total_capacity_mb = sum(p.size_mb or 0 for p in pools)
@@ -135,7 +144,7 @@ async def _lssystem(ctx: SvcContext, pc: ParsedCommand) -> str:
 
     fields = {
         "id": "0",
-        "name": ctx.subsystem_name,
+        "name": ctx.array_name,
         "location": "local",
         "partnership": "",
         "total_mdisk_capacity": _mb_to_tb_str(total_capacity_mb),
@@ -167,7 +176,7 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
 
     if name_or_id is not None:
         result = await session.execute(
-            select(Pool).where(Pool.name == name_or_id, Pool.subsystem_id == ctx.subsystem_id)
+            select(Pool).where(Pool.name == name_or_id, Pool.array_id == ctx.array_id)
         )
         pool = result.scalar_one_or_none()
         if pool is None:
@@ -199,9 +208,9 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
         }
         return format_delim(fields, delim)
 
-    # List pools in this subsystem only
+    # List pools in this array only
     result = await session.execute(
-        select(Pool).where(Pool.subsystem_id == ctx.subsystem_id)
+        select(Pool).where(Pool.array_id == ctx.array_id)
     )
     pools = result.scalars().all()
     rows = []
@@ -234,7 +243,7 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
         result = await session.execute(
             select(Volume).where(
                 Volume.name == name_or_id,
-                Volume.subsystem_id == ctx.subsystem_id,
+                Volume.array_id == ctx.array_id,
             )
         )
         volume = result.scalar_one_or_none()
@@ -274,9 +283,9 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
         }
         return format_delim(fields, delim)
 
-    # List volumes in this subsystem only
+    # List volumes in this array only
     result = await session.execute(
-        select(Volume).where(Volume.subsystem_id == ctx.subsystem_id)
+        select(Volume).where(Volume.array_id == ctx.array_id)
     )
     volumes = result.scalars().all()
     rows = []
@@ -309,7 +318,7 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
 async def _lshost(ctx: SvcContext, pc: ParsedCommand) -> str:
     """svcinfo lshost [<host_name>] [-delim <d>]
 
-    Hosts are global (not subsystem-scoped) per v0 design.
+    Hosts are global (not array-scoped) per v0 design.
     """
     session = ctx.session
     name_or_id: Optional[str] = pc.positional[0] if pc.positional else None
@@ -368,9 +377,11 @@ async def _lshostvdiskmap(ctx: SvcContext, pc: ParsedCommand) -> str:
         raise SvcNotFoundError(f"host '{host_name}'")
 
     maps_result = await session.execute(
-        select(Mapping).where(
+        select(Mapping)
+        .join(Volume, Mapping.volume_id == Volume.id)
+        .where(
             Mapping.host_id == host.id,
-            Mapping.subsystem_id == ctx.subsystem_id,
+            Volume.array_id == ctx.array_id,
         )
     )
     mappings = maps_result.scalars().all()
@@ -405,7 +416,7 @@ async def _lsvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     vol_result = await session.execute(
         select(Volume).where(
             Volume.name == vdisk_name,
-            Volume.subsystem_id == ctx.subsystem_id,
+            Volume.array_id == ctx.array_id,
         )
     )
     volume = vol_result.scalar_one_or_none()
@@ -415,7 +426,6 @@ async def _lsvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     maps_result = await session.execute(
         select(Mapping).where(
             Mapping.volume_id == volume.id,
-            Mapping.subsystem_id == ctx.subsystem_id,
         )
     )
     mappings = maps_result.scalars().all()
@@ -462,21 +472,21 @@ async def _mkvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
     size_mb = size_num * 1024
     session = ctx.session
 
-    # Check volume name uniqueness within this subsystem
+    # Check volume name uniqueness within this array
     dup_result = await session.execute(
         select(Volume).where(
             Volume.name == name,
-            Volume.subsystem_id == ctx.subsystem_id,
+            Volume.array_id == ctx.array_id,
         )
     )
     if dup_result.scalar_one_or_none():
         raise SvcAlreadyExistsError(f"vdisk '{name}'")
 
-    # Find pool by name within this subsystem
+    # Find pool by name within this array
     pool_result = await session.execute(
         select(Pool).where(
             Pool.name == mdiskgrp,
-            Pool.subsystem_id == ctx.subsystem_id,
+            Pool.array_id == ctx.array_id,
         )
     )
     pool = pool_result.scalar_one_or_none()
@@ -486,7 +496,7 @@ async def _mkvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
     # Create Volume record
     volume = Volume(
         name=name,
-        subsystem_id=ctx.subsystem_id,
+        array_id=ctx.array_id,
         pool_id=pool.id,
         size_mb=size_mb,
         status=VolumeStatus.creating,
@@ -497,7 +507,7 @@ async def _mkvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
     # Provision in SPDK
     try:
         bdev_name = await asyncio.to_thread(
-            ensure_lvol, ctx.spdk, volume, pool.name, ctx.subsystem_name
+            ensure_lvol, ctx.spdk, volume, pool.name, ctx.array_name
         )
         volume.bdev_name = bdev_name
         volume.status = VolumeStatus.available
@@ -521,7 +531,7 @@ async def _rmvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
     result = await session.execute(
         select(Volume).where(
             Volume.name == vdisk_name,
-            Volume.subsystem_id == ctx.subsystem_id,
+            Volume.array_id == ctx.array_id,
         )
     )
     volume = result.scalar_one_or_none()
@@ -578,7 +588,7 @@ async def _expandvdisksize(ctx: SvcContext, pc: ParsedCommand) -> str:
     result = await session.execute(
         select(Volume).where(
             Volume.name == vdisk_name,
-            Volume.subsystem_id == ctx.subsystem_id,
+            Volume.array_id == ctx.array_id,
         )
     )
     volume = result.scalar_one_or_none()
@@ -613,7 +623,12 @@ async def _mkhost(ctx: SvcContext, pc: ParsedCommand) -> str:
     if dup_result.scalar_one_or_none():
         raise SvcAlreadyExistsError(f"host '{name}'")
 
-    host = Host(name=name)
+    host = Host(
+        name=name,
+        initiators_iscsi_iqns="[]",
+        initiators_nvme_host_nqns="[]",
+        initiators_fc_wwpns="[]",
+    )
     session.add(host)
     await session.commit()
     await session.refresh(host)
@@ -667,12 +682,12 @@ async def _addhostport(ctx: SvcContext, pc: ParsedCommand) -> str:
         existing = _host_iqns(host)
         if iscsiname not in existing:
             existing.append(iscsiname)
-        host.iqn = ",".join(existing)
+        host.initiators_iscsi_iqns = _json.dumps(existing)
     elif fcwwpn:
-        existing_wwpns = [w.strip() for w in (host.nqn or "").split(",") if w.strip()]
+        existing_wwpns = _host_wwpns(host)
         if fcwwpn not in existing_wwpns:
             existing_wwpns.append(fcwwpn)
-        host.nqn = ",".join(existing_wwpns)
+        host.initiators_fc_wwpns = _json.dumps(existing_wwpns)
 
     await session.commit()
     logger.info("addhostport: host '%s' iqn=%s wwpn=%s", host_name, iscsiname, fcwwpn)
@@ -687,11 +702,11 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     vdisk_name = pc.positional[0]
     session = ctx.session
 
-    # Locate volume by name within this subsystem
+    # Locate volume by name within this array
     vol_result = await session.execute(
         select(Volume).where(
             Volume.name == vdisk_name,
-            Volume.subsystem_id == ctx.subsystem_id,
+            Volume.array_id == ctx.array_id,
         )
     )
     volume = vol_result.scalar_one_or_none()
@@ -709,12 +724,11 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     if host is None:
         raise SvcNotFoundError(f"host '{host_name}'")
 
-    # Duplicate-mapping guard (within subsystem)
+    # Duplicate-mapping guard (within array)
     dup_result = await session.execute(
         select(Mapping).where(
             Mapping.volume_id == volume.id,
             Mapping.host_id == host.id,
-            Mapping.subsystem_id == ctx.subsystem_id,
         )
     )
     if dup_result.scalar_one_or_none():
@@ -722,38 +736,41 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
             f"mapping of vdisk '{vdisk_name}' to host '{host_name}'"
         )
 
-    # Find or create iSCSI ExportContainer for this host in this subsystem
-    ec_result = await session.execute(
-        select(ExportContainer).where(
-            ExportContainer.protocol == Protocol.iscsi,
-            ExportContainer.host_id == host.id,
-            ExportContainer.subsystem_id == ctx.subsystem_id,
+    # Find or create iSCSI TransportEndpoint for this array
+    ep_result = await session.execute(
+        select(TransportEndpoint).where(
+            TransportEndpoint.protocol == Protocol.iscsi,
+            TransportEndpoint.array_id == ctx.array_id,
         )
     )
-    ec = ec_result.scalar_one_or_none()
+    ep = ep_result.scalar_one_or_none()
 
-    if ec is None:
-        ec = ExportContainer(
-            subsystem_id=ctx.subsystem_id,
-            protocol=Protocol.iscsi,
-            host_id=host.id,
-            portal_ip=_settings.iscsi_portal_ip,
-            portal_port=_settings.iscsi_portal_port,
+    if ep is None:
+        target_iqn = f"{_settings.iqn_prefix}:{ctx.array_name}"
+        ep = TransportEndpoint(
+            array_id=ctx.array_id,
+            protocol=Protocol.iscsi.value,
+            targets=_json.dumps({"target_iqn": target_iqn}),
+            addresses=_json.dumps({
+                "portals": [f"{_settings.iscsi_portal_ip}:{_settings.iscsi_portal_port}"],
+            }),
+            auth=_json.dumps({"method": "none"}),
         )
-        session.add(ec)
-        await session.flush()  # get ec.id
-        ec.target_iqn = f"{_settings.iqn_prefix}:{ctx.subsystem_name}:{ec.id}"
+        session.add(ep)
         await session.flush()
 
         try:
-            await asyncio.to_thread(ensure_iscsi_export, ctx.spdk, ec, _settings)
+            await asyncio.to_thread(ensure_iscsi_export, ctx.spdk, ep, _settings)
         except Exception as exc:
             await session.rollback()
             raise SvcError(f"SPDK error creating iSCSI export: {exc}") from exc
 
-    # Allocate LUN ID
+    # Allocate LUN ID (per host + persona endpoint)
     existing_maps_result = await session.execute(
-        select(Mapping).where(Mapping.export_container_id == ec.id)
+        select(Mapping).where(
+            Mapping.host_id == host.id,
+            Mapping.persona_endpoint_id == ep.id,
+        )
     )
     used_luns = [
         m.lun_id
@@ -762,22 +779,34 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     ]
     lun_id = allocate_lun(used_luns)
 
+    # Allocate underlay ID (LUN on iSCSI target)
+    underlay_maps_result = await session.execute(
+        select(Mapping).where(Mapping.underlay_endpoint_id == ep.id)
+    )
+    used_underlay_ids = [
+        m.underlay_id
+        for m in underlay_maps_result.scalars().all()
+        if m.underlay_id is not None
+    ]
+    underlay_id = allocate_lun(used_underlay_ids)
+
     # Persist Mapping record
     mapping = Mapping(
-        subsystem_id=ctx.subsystem_id,
         volume_id=volume.id,
         host_id=host.id,
-        export_container_id=ec.id,
-        protocol=Protocol.iscsi,
+        persona_endpoint_id=ep.id,
+        underlay_endpoint_id=ep.id,
         lun_id=lun_id,
-        ns_id=None,
+        underlay_id=underlay_id,
+        desired_state=DesiredState.attached,
+        revision=1,
     )
     session.add(mapping)
     await session.flush()
 
     # Attach in SPDK
     try:
-        await asyncio.to_thread(ensure_iscsi_mapping, ctx.spdk, mapping, volume, ec)
+        await asyncio.to_thread(ensure_iscsi_mapping, ctx.spdk, mapping, volume, ep)
     except Exception as exc:
         await session.rollback()
         raise SvcError(f"SPDK error attaching LUN: {exc}") from exc
@@ -802,7 +831,7 @@ async def _rmvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     vol_result = await session.execute(
         select(Volume).where(
             Volume.name == vdisk_name,
-            Volume.subsystem_id == ctx.subsystem_id,
+            Volume.array_id == ctx.array_id,
         )
     )
     volume = vol_result.scalar_one_or_none()
@@ -818,7 +847,6 @@ async def _rmvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
         select(Mapping).where(
             Mapping.volume_id == volume.id,
             Mapping.host_id == host.id,
-            Mapping.subsystem_id == ctx.subsystem_id,
         )
     )
     mapping = map_result.scalar_one_or_none()
@@ -827,12 +855,14 @@ async def _rmvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
             f"mapping of vdisk '{vdisk_name}' to host '{host_name}'"
         )
 
-    ec = mapping.export_container
+    underlay_ep = mapping.underlay_endpoint
+    underlay_targets = _json.loads(underlay_ep.targets) if isinstance(underlay_ep.targets, str) else underlay_ep.targets
 
-    # Remove SPDK iSCSI target (v0: delete whole target node)
+    # Remove SPDK iSCSI target
     try:
-        if ec.target_iqn:
-            await asyncio.to_thread(iscsi_rpc.delete_target_node, ctx.spdk, ec.target_iqn)
+        target_iqn = underlay_targets.get("target_iqn", "")
+        if target_iqn:
+            await asyncio.to_thread(iscsi_rpc.delete_target_node, ctx.spdk, target_iqn)
     except Exception as exc:
         raise SvcError(f"SPDK error removing iSCSI target: {exc}") from exc
 
