@@ -1,0 +1,23 @@
+# Apollo Gateway topology: SVC FC E2E test (vhost mode)
+arrays:
+  - name: svc-a
+    vendor: ibm_svc
+    profile:
+      model: "FlashSystem-5200"
+      version: "8.6.0.0"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: false
+    endpoints:
+      - protocol: fc
+        targets:
+          target_wwpns:
+            - "0x500a09c0ffe1aa01"
+      - protocol: iscsi
+
+pools:
+  - name: gold
+    array: svc-a
+    backend: malloc
+    size_gb: 100

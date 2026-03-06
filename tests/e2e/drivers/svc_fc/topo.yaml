@@ -1,0 +1,27 @@
+# Apollo Gateway topology: SVC FC E2E test (non-vhost)
+#
+# FC persona endpoint + iSCSI underlay endpoint.
+# The SVC FC driver calls lsportfc to discover target WWPNs and
+# lsfabric to match host-WWPN → target-WWPN fabric paths.
+arrays:
+  - name: default
+    vendor: ibm_svc
+    profile:
+      model: "FlashSystem-5200"
+      version: "8.6.0.0"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: false
+    endpoints:
+      - protocol: fc
+        targets:
+          target_wwpns:
+            - "0x500a09c0ffe1aa01"
+      - protocol: iscsi
+
+pools:
+  - name: gold
+    array: default
+    backend: malloc
+    size_gb: 100

@@ -1,0 +1,19 @@
+# Apollo Gateway topology: SVC iSCSI E2E test (non-vhost)
+arrays:
+  - name: default
+    vendor: ibm_svc
+    profile:
+      model: "FlashSystem-5200"
+      version: "8.6.0.0"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: false
+    endpoints:
+      - protocol: iscsi
+
+pools:
+  - name: gold
+    array: default
+    backend: malloc
+    size_gb: 100

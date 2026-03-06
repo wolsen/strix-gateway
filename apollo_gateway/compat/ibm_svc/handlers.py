@@ -331,10 +331,12 @@ async def _lshost(ctx: SvcContext, pc: ParsedCommand) -> str:
         if host is None:
             raise SvcNotFoundError(f"host '{name_or_id}'")
         iqns = _host_iqns(host)
+        wwpns = _host_wwpns(host)
+        total_ports = len(iqns) + len(wwpns)
         fields = {
             "id": host.id,
             "name": host.name,
-            "port_count": str(len(iqns)),
+            "port_count": str(total_ports),
             "type": "generic",
             "mask": "1111111111111111",
             "iogrp_count": "1",
@@ -346,6 +348,10 @@ async def _lshost(ctx: SvcContext, pc: ParsedCommand) -> str:
             fields[f"iscsi_name_{i}"] = iqn
         if not iqns:
             fields["iscsi_name"] = ""
+        for i, wwpn in enumerate(wwpns):
+            fields[f"WWPN_{i}"] = wwpn
+        if not wwpns:
+            fields["WWPN"] = ""
         return format_delim(fields, delim)
 
     # List all hosts (global)
@@ -354,14 +360,130 @@ async def _lshost(ctx: SvcContext, pc: ParsedCommand) -> str:
     rows = []
     for h in hosts:
         iqns = _host_iqns(h)
+        wwpns = _host_wwpns(h)
+        total_ports = len(iqns) + len(wwpns)
         rows.append({
             "id": h.id,
             "name": h.name,
-            "port_count": str(len(iqns)),
+            "port_count": str(total_ports),
             "iscsi_name": iqns[0] if iqns else "",
+            "WWPN": wwpns[0] if wwpns else "",
             "status": "online",
             "type": "generic",
         })
+    return format_table(rows)
+
+
+async def _lsportfc(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lsportfc [-delim <d>] [-filtervalue …]
+
+    Returns the FC target ports available on this array.  The Cinder
+    Storwize FC driver calls this to discover target WWPNs for zoning.
+    We return one row per WWPN listed in the array's FC transport
+    endpoint.
+    """
+    session = ctx.session
+    delim = pc.delim
+    filtervalue = pc.flags.get("filtervalue", "")
+
+    # Find all FC endpoints for this array
+    ep_result = await session.execute(
+        select(TransportEndpoint).where(
+            TransportEndpoint.protocol == Protocol.fc,
+            TransportEndpoint.array_id == ctx.array_id,
+        )
+    )
+    fc_endpoints = ep_result.scalars().all()
+
+    rows = []
+    port_idx = 0
+    for ep in fc_endpoints:
+        targets = _json.loads(ep.targets) if isinstance(ep.targets, str) else ep.targets
+        for wwpn in targets.get("target_wwpns", []):
+            row = {
+                "id": str(port_idx),
+                "fc_io_port_id": str(port_idx),
+                "port_id": str(port_idx),
+                "type": "fc",
+                "port_speed": "32Gb",
+                "node_id": "1",
+                "node_name": f"node{port_idx}",
+                "WWPN": wwpn,
+                "nportid": "010000",
+                "status": "active",
+                "attachment": "switch",
+                "adapter_location": "0",
+                "adapter_port_id": "0",
+            }
+            # Apply -filtervalue if present (e.g. "status:active")
+            if filtervalue:
+                include = True
+                for clause in filtervalue.split(":"):
+                    pass  # Cinder only uses status:active — accept all
+                if not include:
+                    continue
+            rows.append(row)
+            port_idx += 1
+
+    if delim is not None and len(rows) == 1:
+        return format_delim(rows[0], delim)
+    return format_table(rows)
+
+
+async def _lsfabric(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lsfabric -host <host_name> [-delim <d>]
+
+    Returns the FC fabric connections between a host's WWPN(s) and the
+    array's target port WWPNs.  The Cinder Storwize FC driver calls this
+    during ``initialize_connection`` to build the list of
+    target-WWPNs-per-initiator.
+    """
+    host_name = pc.flags.get("host", "")
+    delim = pc.delim
+    session = ctx.session
+
+    if not host_name:
+        raise SvcInvalidArgError("lsfabric requires -host <host_name>")
+
+    # Look up host
+    host_result = await session.execute(select(Host).where(Host.name == host_name))
+    host = host_result.scalar_one_or_none()
+    if host is None:
+        raise SvcNotFoundError(f"host '{host_name}'")
+
+    host_wwpns = _host_wwpns(host)
+
+    # Get all FC target port WWPNs for this array
+    ep_result = await session.execute(
+        select(TransportEndpoint).where(
+            TransportEndpoint.protocol == Protocol.fc,
+            TransportEndpoint.array_id == ctx.array_id,
+        )
+    )
+    fc_endpoints = ep_result.scalars().all()
+    target_wwpns: list[str] = []
+    for ep in fc_endpoints:
+        targets = _json.loads(ep.targets) if isinstance(ep.targets, str) else ep.targets
+        target_wwpns.extend(targets.get("target_wwpns", []))
+
+    # Produce a cross-product fabric entry: each host WWPN ↔ each target WWPN
+    rows = []
+    for h_wwpn in host_wwpns:
+        for t_wwpn in target_wwpns:
+            rows.append({
+                "remote_wwpn": h_wwpn,
+                "remote_nportid": "020000",
+                "name": host.name,
+                "host_name": host.name,
+                "local_wwpn": t_wwpn,
+                "local_port": "1",
+                "local_nportid": "010000",
+                "state": "active",
+                "type": "host",
+            })
+
+    if delim is not None and len(rows) == 1:
+        return format_delim(rows[0], delim)
     return format_table(rows)
 
 
@@ -737,18 +859,34 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
             f"mapping of vdisk '{vdisk_name}' to host '{host_name}'"
         )
 
-    # Find or create iSCSI TransportEndpoint for this array
-    ep_result = await session.execute(
+    # --- Resolve endpoints (FC-aware) ---
+    # If the host has FC WWPNs and the array has an FC endpoint, use
+    # FC-persona-over-iSCSI-underlay.  Otherwise fall back to iSCSI-only.
+    host_wwpns = _host_wwpns(host)
+
+    fc_ep = None
+    if host_wwpns:
+        fc_result = await session.execute(
+            select(TransportEndpoint).where(
+                TransportEndpoint.protocol == Protocol.fc,
+                TransportEndpoint.array_id == ctx.array_id,
+            )
+        )
+        fc_ep = fc_result.scalar_one_or_none()
+
+    # Find or create iSCSI TransportEndpoint for this array (always needed
+    # as the underlay — or as persona+underlay when no FC endpoint exists)
+    iscsi_ep_result = await session.execute(
         select(TransportEndpoint).where(
             TransportEndpoint.protocol == Protocol.iscsi,
             TransportEndpoint.array_id == ctx.array_id,
         )
     )
-    ep = ep_result.scalar_one_or_none()
+    iscsi_ep = iscsi_ep_result.scalar_one_or_none()
 
-    if ep is None:
+    if iscsi_ep is None:
         target_iqn = f"{_settings.iqn_prefix}:{ctx.array_name}"
-        ep = TransportEndpoint(
+        iscsi_ep = TransportEndpoint(
             array_id=ctx.array_id,
             protocol=Protocol.iscsi.value,
             targets=_json.dumps({"target_iqn": target_iqn}),
@@ -757,20 +895,25 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
             }),
             auth=_json.dumps({"method": "none"}),
         )
-        session.add(ep)
+        session.add(iscsi_ep)
         await session.flush()
 
         try:
-            await asyncio.to_thread(ensure_iscsi_export, ctx.spdk, ep, _settings)
+            await asyncio.to_thread(ensure_iscsi_export, ctx.spdk, iscsi_ep, _settings)
         except Exception as exc:
             await session.rollback()
             raise SvcError(f"SPDK error creating iSCSI export: {exc}") from exc
+
+    # Persona endpoint: FC endpoint if available, otherwise iSCSI
+    persona_ep = fc_ep if fc_ep is not None else iscsi_ep
+    # Underlay endpoint: always iSCSI
+    underlay_ep = iscsi_ep
 
     # Allocate LUN ID (per host + persona endpoint)
     existing_maps_result = await session.execute(
         select(Mapping).where(
             Mapping.host_id == host.id,
-            Mapping.persona_endpoint_id == ep.id,
+            Mapping.persona_endpoint_id == persona_ep.id,
         )
     )
     used_luns = [
@@ -782,7 +925,7 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
 
     # Allocate underlay ID (LUN on iSCSI target)
     underlay_maps_result = await session.execute(
-        select(Mapping).where(Mapping.underlay_endpoint_id == ep.id)
+        select(Mapping).where(Mapping.underlay_endpoint_id == underlay_ep.id)
     )
     used_underlay_ids = [
         m.underlay_id
@@ -795,8 +938,8 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     mapping = Mapping(
         volume_id=volume.id,
         host_id=host.id,
-        persona_endpoint_id=ep.id,
-        underlay_endpoint_id=ep.id,
+        persona_endpoint_id=persona_ep.id,
+        underlay_endpoint_id=underlay_ep.id,
         lun_id=lun_id,
         underlay_id=underlay_id,
         desired_state=DesiredState.attached,
@@ -805,9 +948,9 @@ async def _mkvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     session.add(mapping)
     await session.flush()
 
-    # Attach in SPDK
+    # Attach in SPDK (always iSCSI underlay)
     try:
-        await asyncio.to_thread(ensure_iscsi_mapping, ctx.spdk, mapping, volume, ep)
+        await asyncio.to_thread(ensure_iscsi_mapping, ctx.spdk, mapping, volume, underlay_ep)
     except Exception as exc:
         await session.rollback()
         raise SvcError(f"SPDK error attaching LUN: {exc}") from exc
@@ -890,6 +1033,8 @@ SVCINFO_HANDLERS: dict[str, object] = {
     "lsmdiskgrp": _lsmdiskgrp,
     "lsvdisk": _lsvdisk,
     "lshost": _lshost,
+    "lsportfc": _lsportfc,
+    "lsfabric": _lsfabric,
     "lshostvdiskmap": _lshostvdiskmap,
     "lsvdiskhostmap": _lsvdiskhostmap,
 }
