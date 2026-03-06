@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/compat/ibm_svc/parse.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Command-line parsing helpers for the IBM SVC SSH façade.
 
 SSH_ORIGINAL_COMMAND format

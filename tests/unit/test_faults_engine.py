@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_faults_engine.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Unit tests for the fault/delay injection engine."""
 
 from __future__ import annotations

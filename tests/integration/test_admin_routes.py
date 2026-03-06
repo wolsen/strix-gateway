@@ -1,4 +1,5 @@
-# FILE: tests/integration/test_admin_routes.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Integration tests for /admin/* routes."""
 
 from __future__ import annotations

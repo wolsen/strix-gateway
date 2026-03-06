@@ -1,4 +1,5 @@
-# FILE: tests/integration/test_api_errors.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Integration tests covering error paths and validation branches in api/v1.py."""
 
 from __future__ import annotations

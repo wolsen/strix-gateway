@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/topology/validate.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Cross-reference validation for Apollo Gateway topology specifications.
 
 :func:`validate` performs structural checks across all sections of a

@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/compat/ibm_svc/format.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Output formatting helpers for IBM SVC-compatible output.
 
 IBM SVC wire format rules

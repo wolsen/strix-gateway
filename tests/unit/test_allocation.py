@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_allocation.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Unit tests for LUN and NSID allocation logic."""
 
 import pytest

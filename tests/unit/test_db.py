@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_db.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Unit tests for db module edge cases."""
 
 from __future__ import annotations

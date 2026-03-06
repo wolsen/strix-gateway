@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/cli/topo/models.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Pydantic models for Apollo Gateway topology files.
 
 These models are self-contained within the CLI package so that the CLI

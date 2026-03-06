@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/topology/schema.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Pydantic models for the Apollo Gateway topology specification.
 
 A topology file declares arrays, endpoints, pools, volumes, hosts, and

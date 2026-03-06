@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/topology/apply.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Apply a validated topology specification to a live Apollo Gateway instance.
 
 Resources are created in dependency order:

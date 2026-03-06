@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/api/v1.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Apollo Gateway v1 REST API routes.
 
 v0.2 — Array/TransportEndpoint model, service-layer mappings, attachments.

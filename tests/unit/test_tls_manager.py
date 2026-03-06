@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_tls_manager.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for the TLS certificate manager (CA + leaf cert lifecycle)."""
 
 from __future__ import annotations

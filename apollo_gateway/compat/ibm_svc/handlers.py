@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/compat/ibm_svc/handlers.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """IBM SVC command implementations.
 
 Each handler is an ``async`` function with the signature::

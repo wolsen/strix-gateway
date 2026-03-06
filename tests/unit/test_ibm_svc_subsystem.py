@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_ibm_svc_subsystem.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for IBM SVC facade array isolation.
 
 Validates that:

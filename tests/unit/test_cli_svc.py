@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_cli_svc.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for the SVC CLI command (REST API path)."""
 
 from __future__ import annotations

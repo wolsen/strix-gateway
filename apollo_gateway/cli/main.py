@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/cli/main.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Apollo Gateway CLI — Typer application.
 
 Entrypoint: ``apollo`` console script (see pyproject.toml).

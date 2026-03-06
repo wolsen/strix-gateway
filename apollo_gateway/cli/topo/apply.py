@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/cli/topo/apply.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Idempotent apply and smoke-test logic for topology files.
 
 The apply order is intentionally deterministic:

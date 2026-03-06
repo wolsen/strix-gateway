@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/cli/output.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Output formatting for CLI commands.
 
 Supports three modes: table (human-friendly), json (machine-readable),

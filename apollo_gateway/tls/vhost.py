@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/tls/vhost.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Virtual-host FQDN derivation and array-to-hostname registry."""
 
 from __future__ import annotations

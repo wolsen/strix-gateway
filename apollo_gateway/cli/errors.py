@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/cli/errors.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Typed CLI errors mapped to exit codes.
 
 Exit code conventions:

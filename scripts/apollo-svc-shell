@@ -1,5 +1,6 @@
 #!/bin/bash
-# FILE: scripts/apollo-svc-shell
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # ForceCommand dispatcher for the IBM SVC SSH façade.
 # sshd runs this script for every session by user "svc".

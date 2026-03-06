@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/compat/ibm_svc/audit.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Structured audit logging for the IBM SVC SSH façade.
 
 Every SSH invocation produces one record written to two files:

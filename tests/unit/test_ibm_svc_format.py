@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_ibm_svc_format.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Unit tests for apollo_gateway.compat.ibm_svc.format."""
 
 from __future__ import annotations

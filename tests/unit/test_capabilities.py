@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_capabilities.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for capability profile enforcement.
 
 Validates:

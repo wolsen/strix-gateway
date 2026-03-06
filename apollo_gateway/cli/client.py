@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/cli/client.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """HTTP client wrapper for the Apollo Gateway REST API.
 
 All public methods return parsed JSON (dicts/lists).  Non-2xx responses

@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_ibm_svc_shell.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Integration-style tests for the IBM SVC shell dispatcher.
 
 These tests:

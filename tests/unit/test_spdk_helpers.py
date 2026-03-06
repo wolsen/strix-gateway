@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_spdk_helpers.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Unit tests for spdk/iscsi.py, spdk/nvmf.py, and spdk/ensure.py helpers."""
 
 from __future__ import annotations

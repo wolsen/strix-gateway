@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/main.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Apollo Gateway FastAPI application entrypoint."""
 
 from __future__ import annotations

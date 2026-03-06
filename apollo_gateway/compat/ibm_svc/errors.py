@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/compat/ibm_svc/errors.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Typed errors for the IBM SVC façade, mapped to exit codes and stable stderr messages.
 
 Contract (checked by Cinder drivers):

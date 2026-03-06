@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/core/faults.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """In-memory fault and delay injection engine.
 
 Faults and delays are stored in module-level dicts keyed by operation name.

@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/core/personas.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Persona defaults and CapabilityProfile schema.
 
 The persona defaults map is intentionally isolated here so that new personas

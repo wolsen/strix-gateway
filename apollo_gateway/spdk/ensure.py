@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/spdk/ensure.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Idempotent ensure_* functions that reconcile desired DB state into SPDK.
 
 Each function checks whether the resource already exists in SPDK before

@@ -1,4 +1,5 @@
-# FILE: tests/integration/test_vhost_middleware.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Integration tests for vhost middleware and API endpoints.
 
 Uses a real FastAPI test client with the VhostMiddleware active.

@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/api/admin.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Admin routes for fault and delay injection."""
 
 from __future__ import annotations

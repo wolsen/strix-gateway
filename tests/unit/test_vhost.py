@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_vhost.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for vhost FQDN derivation, DNS name validation, and VhostRegistry."""
 
 from __future__ import annotations

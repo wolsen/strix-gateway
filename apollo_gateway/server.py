@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/server.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Programmatic uvicorn launcher with TLS/SNI support.
 
 Invoked as ``python -m apollo_gateway.server`` when ``vhost_enabled`` is True.

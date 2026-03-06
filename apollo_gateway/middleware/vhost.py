@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/middleware/vhost.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """ASGI middleware that resolves the array from the HTTP Host header."""
 
 from __future__ import annotations

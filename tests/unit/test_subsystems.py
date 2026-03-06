@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_subsystems.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for array creation, scoping, and CRUD via the REST API.
 
 Validates that:

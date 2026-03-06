@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/tls/manager.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Internal CA and leaf certificate management for vhost TLS."""
 
 from __future__ import annotations

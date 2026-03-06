@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/compat/ibm_svc/shell.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Entry point for the /usr/local/bin/apollo-svc-shell ForceCommand.
 
 The sshd ForceCommand runs this module for every connection made by the

@@ -1,4 +1,5 @@
-# FILE: tests/integration/test_full_flow.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Integration tests — full create/map/attachments flow.
 
 The SPDK client is mocked so no SPDK daemon is needed.  The tests exercise the

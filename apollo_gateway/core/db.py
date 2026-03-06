@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/core/db.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """SQLAlchemy 2.x async ORM models and session management.
 
 Breaking change (v0.2): Subsystem → Array, ExportContainer → TransportEndpoint,

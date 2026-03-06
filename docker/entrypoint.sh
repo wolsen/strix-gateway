@@ -1,5 +1,6 @@
 #!/bin/bash
-# FILE: docker/entrypoint.sh
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Container entrypoint: configure the svc SSH user at runtime, start sshd
 # in the background, then exec the FastAPI gateway in the foreground.

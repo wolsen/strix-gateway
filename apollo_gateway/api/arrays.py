@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/api/arrays.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Array CRUD, transport-endpoint management, and capability reporting."""
 
 from __future__ import annotations

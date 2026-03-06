@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/core/reconcile.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Startup reconciler — replays desired DB state into SPDK.
 
 Called once during the FastAPI lifespan before the server starts accepting

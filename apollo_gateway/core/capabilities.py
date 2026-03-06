@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/core/capabilities.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Centralised capability-check functions.
 
 These raise :class:`fastapi.HTTPException` (422) so they can be called

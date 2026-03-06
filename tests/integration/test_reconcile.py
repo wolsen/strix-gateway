@@ -1,4 +1,5 @@
-# FILE: tests/integration/test_reconcile.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for the startup reconciler."""
 
 from __future__ import annotations

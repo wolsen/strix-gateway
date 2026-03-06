@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/topology/load.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Loaders for Apollo Gateway topology specification files.
 
 Supports YAML (``.yaml`` / ``.yml``) and TOML (``.toml``) formats.

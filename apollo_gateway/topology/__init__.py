@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/topology/__init__.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Topology specification package for Apollo Gateway.
 
 Provides YAML/TOML-driven declarative configuration of arrays, endpoints,

@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_cli_topo.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for CLI topology parsing and validation."""
 
 from __future__ import annotations

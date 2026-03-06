@@ -1,4 +1,5 @@
-# FILE: apollo_gateway/spdk/nvmf.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """NVMe-oF RPC helpers.
 
 All functions are synchronous wrappers around SPDKClient.call().

@@ -1,4 +1,5 @@
-# FILE: tests/unit/test_sni.py
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
 """Tests for SNI certificate selection."""
 
 from __future__ import annotations
