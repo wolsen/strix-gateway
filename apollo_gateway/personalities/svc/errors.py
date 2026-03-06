@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Typed errors for the IBM SVC façade, mapped to exit codes and stable stderr messages.
+"""Typed errors for the SVC SSH façade, mapped to exit codes and stable stderr messages.
 
 Contract (checked by Cinder drivers):
-  - Not found     → exit 1, stderr contains "not found"
+  - Not found      → exit 1, stderr contains "not found"
   - Already exists → exit 1, stderr contains "already exists"
-  - Unknown cmd   → exit 1 (any message)
-  - Success       → exit 0
+  - Unknown cmd    → exit 1 (any message)
+  - Success        → exit 0
 """
 
 from __future__ import annotations
@@ -21,14 +21,14 @@ class SvcError(Exception):
 
 
 class SvcNotFoundError(SvcError):
-    """Resource not found.  stderr MUST contain the word 'not found'."""
+    """Resource not found. stderr MUST contain the word 'not found'."""
 
     def __init__(self, resource: str) -> None:
         super().__init__(f"CMMVC5753E {resource} not found")
 
 
 class SvcAlreadyExistsError(SvcError):
-    """Resource already exists.  stderr MUST contain 'already exists'."""
+    """Resource already exists. stderr MUST contain 'already exists'."""
 
     def __init__(self, resource: str) -> None:
         super().__init__(f"CMMVC6035E {resource} already exists")

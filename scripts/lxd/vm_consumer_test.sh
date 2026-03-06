@@ -483,10 +483,10 @@ nvme disconnect -n "${NVMEOF_TARGET_NQN}"
 pass "Phase I: NVMeoF I/O validated"
 
 # ---------------------------------------------------------------------------
-# Phase J: SVC facade test
+# Phase J: SVC remote execution endpoint
 # ---------------------------------------------------------------------------
 
-log "Phase J: SVC facade validation"
+log "Phase J: SVC remote endpoint validation"
 
 SVC_RESP="$(api_post "/v1/svc/run" '{"array": "svc-arr", "command": "svcinfo lsmdiskgrp"}')"
 SVC_EXIT="$(echo "${SVC_RESP}" | jq -r '.exit_code')"
@@ -500,7 +500,7 @@ fi
 
 log "  SVC lsmdiskgrp exit_code=0, stdout length=${#SVC_STDOUT}"
 
-pass "Phase J: SVC facade validated"
+pass "Phase J: SVC remote endpoint validated"
 
 # ---------------------------------------------------------------------------
 # Phase K: Cleanup validation

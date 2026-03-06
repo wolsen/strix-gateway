@@ -394,7 +394,7 @@ setup_ssh_facade() {
 
   # Determine path to the shell module
   local gateway_root="${1:-/root/apollo-gateway}"
-  local shell_script="${gateway_root}/.venv/bin/python -m apollo_gateway.compat.ibm_svc.shell"
+    local shell_script="${gateway_root}/.venv/bin/python -m apollo_gateway.personalities.svc.shell"
 
   # Write sshd_config for SVC facade
   # ForceCommand ensures any SSH connection as 'svc' runs through the shell

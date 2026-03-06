@@ -3,8 +3,8 @@
 """Tests for IBM SVC facade array isolation.
 
 Validates that:
-  - Two SvcContexts for different arrays see only their own pools / volumes
-  - POST /v1/svc/run returns a valid response for a known array
+    - Two SvcContexts for different arrays see only their own pools / volumes
+    - POST /v1/svc/run executes against a selected array
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from apollo_gateway.compat.ibm_svc.handlers import SvcContext
-from apollo_gateway.compat.ibm_svc.handlers import dispatch
+from apollo_gateway.personalities.svc.handlers import SvcContext
+from apollo_gateway.personalities.svc.handlers import dispatch
 from apollo_gateway.core.db import Pool, Array, Volume, init_db, get_session_factory
 from apollo_gateway.core.models import VolumeStatus
 from apollo_gateway.core.personas import merge_profile

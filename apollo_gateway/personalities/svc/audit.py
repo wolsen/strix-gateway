@@ -8,7 +8,7 @@ Every SSH invocation produces one record written to two files:
   /var/log/apollo/ibm_svc_cli.log    — human-readable text
 
 Records are also emitted at DEBUG level on the diagnostic logger
-``"apollo_gateway.compat.ibm_svc"`` so they appear in container stdout
+``"apollo_gateway.personalities.svc"`` so they appear in container stdout
 when the log level is DEBUG.
 
 Sensitive-value redaction
@@ -36,7 +36,7 @@ from io import TextIOBase
 from pathlib import Path
 from typing import IO, Optional, TextIO
 
-_diag = logging.getLogger("apollo_gateway.compat.ibm_svc")
+_diag = logging.getLogger("apollo_gateway.personalities.svc")
 
 # ---------------------------------------------------------------------------
 # Sensitive-flag redaction
@@ -330,7 +330,7 @@ async def audited_dispatch(
     remote_port: Optional[str] = None,
     subsystem_name: Optional[str] = None,
 ) -> int:
-    """Wrap :func:`~apollo_gateway.compat.ibm_svc.handlers.dispatch` with
+    """Wrap :func:`~apollo_gateway.personalities.svc.handlers.dispatch` with
     byte-counting streams and audit-record emission.
 
     Parameters
@@ -338,7 +338,7 @@ async def audited_dispatch(
     cmd_str:
         Raw SVC command string.
     ctx:
-        Initialised :class:`~apollo_gateway.compat.ibm_svc.handlers.SvcContext`.
+        Initialised :class:`~apollo_gateway.personalities.svc.handlers.SvcContext`.
     audit:
         Configured :class:`SvcAuditLogger`.
     remote_user:
@@ -355,7 +355,7 @@ async def audited_dispatch(
     int
         Exit code from :func:`dispatch`.
     """
-    from apollo_gateway.compat.ibm_svc.handlers import dispatch
+    from apollo_gateway.personalities.svc.handlers import dispatch
 
     req_id = str(uuid.uuid4())
 

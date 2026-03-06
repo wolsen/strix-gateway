@@ -21,6 +21,7 @@ from apollo_gateway.config import settings
 from apollo_gateway.core.db import Array, TransportEndpoint, get_session_factory, init_db
 from apollo_gateway.core.faults import FaultInjectionError
 from apollo_gateway.core.reconcile import reconcile
+from apollo_gateway.personalities.generic.personality import GenericPersonality
 from apollo_gateway.spdk.rpc import SPDKClient
 
 logging.basicConfig(
@@ -71,6 +72,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Connecting to SPDK at %s", settings.spdk_socket_path)
     spdk_client = SPDKClient(settings.spdk_socket_path)
     app.state.spdk_client = spdk_client
+
+    # Instantiate the active personality
+    personality = GenericPersonality(settings)
+    personality.spdk = spdk_client
+    app.state.personality = personality
+    logger.info("Personality: %s", type(personality).__name__)
 
     logger.info("Running startup reconciliation")
     try:

@@ -802,29 +802,6 @@ def smoke_cmd(
 
 
 # =====================================================================
-# svc  (IBM SVC façade debug — local in-process execution)
-# =====================================================================
-
-@svc_app.command("run")
-@_handle
-def svc_run(
-    array: str = typer.Option(
-        ..., "--array", "-a", help="Array name (required)"
-    ),
-    command: str = typer.Argument(
-        ..., help='SVC command string, e.g. "svcinfo lssystem"'
-    ),
-):
-    """Run an IBM SVC façade command via the gateway API."""
-    result = _client().svc_run(array, command)
-    if result.get("stdout"):
-        sys.stdout.write(result["stdout"])
-    if result.get("stderr"):
-        sys.stderr.write(result["stderr"])
-    raise typer.Exit(result["exit_code"])
-
-
-# =====================================================================
 # Console-script entrypoint
 # =====================================================================
 

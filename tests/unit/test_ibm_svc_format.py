@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Unit tests for apollo_gateway.compat.ibm_svc.format."""
+"""Unit tests for apollo_gateway.personalities.svc.format."""
 
 from __future__ import annotations
 
 import pytest
 
-from apollo_gateway.compat.ibm_svc.format import format_delim, format_table
+from apollo_gateway.personalities.svc.format import format_delim, format_table
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from apollo_gateway.compat.ibm_svc.handlers import SvcContext, dispatch
+from apollo_gateway.personalities.svc.handlers import SvcContext, dispatch
 from apollo_gateway.core.db import (
     Array,
     Base,

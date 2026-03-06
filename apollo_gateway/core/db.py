@@ -9,9 +9,10 @@ Delete the old SQLite DB before running.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import (
@@ -54,6 +55,13 @@ class Array(Base):
         "TransportEndpoint", back_populates="array", lazy="selectin"
     )
 
+    @property
+    def profile_dict(self) -> dict[str, Any]:
+        """Parsed profile as a Python dict."""
+        if isinstance(self.profile, str):
+            return json.loads(self.profile)
+        return self.profile or {}
+
 
 class TransportEndpoint(Base):
     """Array-owned target endpoint (iSCSI, NVMe-oF TCP, or FC)."""
@@ -74,6 +82,30 @@ class TransportEndpoint(Base):
     )
 
     array: Mapped["Array"] = relationship("Array", back_populates="endpoints", lazy="selectin")
+
+    @property
+    def targets_dict(self) -> dict[str, Any]:
+        """Parsed targets as a Python dict."""
+        raw = json.loads(self.targets) if isinstance(self.targets, str) else self.targets
+        if isinstance(raw, dict):
+            return raw
+        return {}
+
+    @property
+    def addresses_dict(self) -> dict[str, Any]:
+        """Parsed addresses as a Python dict."""
+        raw = json.loads(self.addresses) if isinstance(self.addresses, str) else self.addresses
+        if isinstance(raw, dict):
+            return raw
+        return {}
+
+    @property
+    def auth_dict(self) -> dict[str, Any]:
+        """Parsed auth as a Python dict."""
+        raw = json.loads(self.auth) if isinstance(self.auth, str) else self.auth
+        if isinstance(raw, dict):
+            return raw
+        return {}
 
 
 class Pool(Base):
@@ -135,6 +167,21 @@ class Host(Base):
     )
 
     mappings: Mapped[list["Mapping"]] = relationship("Mapping", back_populates="host", lazy="selectin")
+
+    @property
+    def iscsi_iqns(self) -> list[str]:
+        """Parsed iSCSI IQN list."""
+        return json.loads(self.initiators_iscsi_iqns) if isinstance(self.initiators_iscsi_iqns, str) else self.initiators_iscsi_iqns or []
+
+    @property
+    def nvme_nqns(self) -> list[str]:
+        """Parsed NVMe host NQN list."""
+        return json.loads(self.initiators_nvme_host_nqns) if isinstance(self.initiators_nvme_host_nqns, str) else self.initiators_nvme_host_nqns or []
+
+    @property
+    def fc_wwpns(self) -> list[str]:
+        """Parsed FC WWPN list."""
+        return json.loads(self.initiators_fc_wwpns) if isinstance(self.initiators_fc_wwpns, str) else self.initiators_fc_wwpns or []
 
 
 class Mapping(Base):

@@ -291,14 +291,6 @@ class ApolloClient:
     def delete_mapping(self, mapping_id: str) -> None:
         self.delete(f"/v1/mappings/{mapping_id}")
 
-    # ------------------------------------------------------------------
-    # SVC façade
-    # ------------------------------------------------------------------
-
-    def svc_run(self, array: str, command: str) -> dict:
-        """POST /v1/svc/run and return the raw response dict."""
-        return self.post("/v1/svc/run", json={"array": array, "command": command})
-
     def resolve_mapping(
         self,
         host_name: str,

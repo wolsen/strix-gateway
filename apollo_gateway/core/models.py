@@ -283,6 +283,24 @@ class AttachmentsResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# SVC run (SSH shell -> remote API execution)
+# ---------------------------------------------------------------------------
+
+class SvcRunRequest(BaseModel):
+    array: str
+    command: str
+    remote_user: str | None = None
+    remote_addr: str | None = None
+    remote_port: str | None = None
+
+
+class SvcRunResponse(BaseModel):
+    stdout: str
+    stderr: str
+    exit_code: int
+
+
+# ---------------------------------------------------------------------------
 # Fault / delay injection
 # ---------------------------------------------------------------------------
 
@@ -296,20 +314,3 @@ class DelayCreate(BaseModel):
     delay_seconds: float
 
 
-# ---------------------------------------------------------------------------
-# SVC run (REST API façade)
-# ---------------------------------------------------------------------------
-
-class SvcRunRequest(BaseModel):
-    array: str  # array name or id
-    command: str
-    # SSH audit metadata — populated by ForceCommand, absent in CLI use
-    remote_user: str | None = None
-    remote_addr: str | None = None
-    remote_port: str | None = None
-
-
-class SvcRunResponse(BaseModel):
-    stdout: str
-    stderr: str
-    exit_code: int

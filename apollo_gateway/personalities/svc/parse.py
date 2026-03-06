@@ -1,23 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Command-line parsing helpers for the IBM SVC SSH façade.
-
-SSH_ORIGINAL_COMMAND format
----------------------------
-    svcinfo <subcommand> [args...]
-    svctask <subcommand> [args...]
-
-Flags follow POSIX-style ``-flag value`` conventions:
-
-    svcinfo lsvdisk vol1 -delim !
-    svctask mkvdisk -name vol1 -size 1 -unit gb -mdiskgrp pool0
-
-Boolean flags (no value) are stored in ``ParsedCommand.flags`` with value
-``""``.  Positional arguments appear after all flags have been consumed.
-
-The special ``-delim <char>`` flag is extracted into ``ParsedCommand.delim``
-and *not* placed in ``flags``.
-"""
+"""Command-line parsing helpers for the SVC SSH façade."""
 
 from __future__ import annotations
 
@@ -25,7 +8,10 @@ import shlex
 from dataclasses import dataclass, field
 from typing import Optional
 
-from apollo_gateway.compat.ibm_svc.errors import SvcInvalidArgError, SvcUnknownCommandError
+from apollo_gateway.personalities.svc.errors import (
+    SvcInvalidArgError,
+    SvcUnknownCommandError,
+)
 
 VALID_VERBS = frozenset({"svcinfo", "svctask"})
 
@@ -34,25 +20,16 @@ VALID_VERBS = frozenset({"svcinfo", "svctask"})
 class ParsedCommand:
     """Parsed representation of a single SVC CLI invocation."""
 
-    verb: str           # "svcinfo" or "svctask"
-    subcommand: str     # e.g. "lsvdisk"
+    verb: str
+    subcommand: str
     raw_args: list[str] = field(default_factory=list)
-    delim: Optional[str] = None          # from -delim <char>
-    flags: dict[str, str] = field(default_factory=dict)   # -name vol1 → {"name": "vol1"}
-    positional: list[str] = field(default_factory=list)   # bare words after flag pairs
+    delim: Optional[str] = None
+    flags: dict[str, str] = field(default_factory=dict)
+    positional: list[str] = field(default_factory=list)
 
 
 def parse_ssh_command(cmd_str: str) -> ParsedCommand:
-    """Parse *cmd_str* (value of SSH_ORIGINAL_COMMAND) into a ParsedCommand.
-
-    Raises
-    ------
-    SvcUnknownCommandError
-        If the verb is not ``svcinfo`` or ``svctask``, or if fewer than two
-        tokens are present.
-    SvcInvalidArgError
-        On shell quoting errors or malformed ``-delim`` usage.
-    """
+    """Parse SSH_ORIGINAL_COMMAND text into a ParsedCommand."""
     try:
         tokens = shlex.split(cmd_str.strip())
     except ValueError as exc:
@@ -74,7 +51,6 @@ def parse_ssh_command(cmd_str: str) -> ParsedCommand:
 
 
 def _extract_flags(pc: ParsedCommand, rest: list[str]) -> None:
-    """Populate *pc.flags*, *pc.positional*, and *pc.delim* from *rest*."""
     i = 0
     while i < len(rest):
         tok = rest[i]
@@ -86,11 +62,9 @@ def _extract_flags(pc: ParsedCommand, rest: list[str]) -> None:
                 pc.delim = rest[i + 1]
                 i += 2
             elif i + 1 < len(rest) and not rest[i + 1].startswith("-"):
-                # Flag with a value: -name vol1
                 pc.flags[key] = rest[i + 1]
                 i += 2
             else:
-                # Boolean flag: -readonly (no value)
                 pc.flags[key] = ""
                 i += 1
         else:
@@ -99,10 +73,7 @@ def _extract_flags(pc: ParsedCommand, rest: list[str]) -> None:
 
 
 def require_flag(pc: ParsedCommand, flag: str) -> str:
-    """Return the value of *flag* or raise :class:`SvcInvalidArgError`.
-
-    Raises if the flag is absent or was provided without a value.
-    """
+    """Return required flag value or raise SvcInvalidArgError."""
     val = pc.flags.get(flag)
     if val is None or val == "":
         raise SvcInvalidArgError(f"-{flag} is required")
@@ -110,5 +81,5 @@ def require_flag(pc: ParsedCommand, flag: str) -> str:
 
 
 def optional_flag(pc: ParsedCommand, flag: str, default: str = "") -> str:
-    """Return the value of *flag*, falling back to *default* if absent."""
+    """Return optional flag value, defaulting when absent."""
     return pc.flags.get(flag, default) or default

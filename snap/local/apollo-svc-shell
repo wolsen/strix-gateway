@@ -11,4 +11,4 @@
 #
 # All logic lives in the Python module; this script is a thin launcher.
 
-exec python3 -m apollo_gateway.compat.ibm_svc.shell
+exec python3 -m apollo_gateway.personalities.svc.shell
