@@ -18,10 +18,10 @@ functional testing, not full vendor feature parity.
 │   models.py · db.py · reconcile.py · faults.py  │
 ├─────────────────────────────────────────────────┤
 │  SPDK Abstraction Layer                         │
-│   rpc.py · ensure.py · iscsi.py · nvmf.py      │
+│   rpc.py · ensure.py · iscsi.py · nvmf.py       │
 ├────────────────────┬────────────────────────────┤
 │  SPDK JSON-RPC     │  Unix socket               │
-│  (spdk.sock)       │  /var/tmp/spdk.sock         │
+│  (spdk.sock)       │  /var/tmp/spdk.sock        │
 └────────────────────┴────────────────────────────┘
          │                      │
     ┌────┴────┐           ┌────┴────┐
@@ -37,11 +37,109 @@ functional testing, not full vendor feature parity.
 - Python 3.11+
 - [uv](https://github.com/astral-sh/uv) (recommended) or pip
 
-### Install dependencies
+For normal usage and deployments, install and run Strix Gateway via the snap.
+Use `uv` and local scripts for development and functional testing only.
+
+### Recommended: Install and Use the Snap
+
+Use this path for real usage with `snapd` service supervision.
 
 ```bash
-# With uv
+# Install from Snap Store
+sudo snap install strix-gateway
+```
+
+For local snap development builds instead:
+
+```bash
+snapcraft
+sudo snap install --dangerous ./strix-gateway_*.snap
+```
+
+### Operate the Snap Services
+
+```bash
+# Show service state
+sudo snap services strix-gateway
+
+# Start / stop / restart services
+sudo snap start strix-gateway.spdk-tgt strix-gateway.strix-gateway
+sudo snap restart strix-gateway.strix-gateway
+sudo snap stop strix-gateway.strix-gateway
+
+# Follow logs
+sudo snap logs -f strix-gateway.strix-gateway
+sudo snap logs -f strix-gateway.spdk-tgt
+```
+
+### Configure Snap Runtime
+
+```bash
+# Set portal and naming configuration
+sudo snap set strix-gateway iscsi-portal-ip=0.0.0.0
+sudo snap set strix-gateway iscsi-portal-port=3260
+sudo snap set strix-gateway nvmef-portal-ip=0.0.0.0
+sudo snap set strix-gateway nvmef-portal-port=4420
+sudo snap set strix-gateway iqn-prefix=iqn.2026-02.strix.strix
+sudo snap set strix-gateway nqn-prefix=nqn.2026-02.io.strix:strix
+
+# Required for hugepage access in strict confinement
+sudo snap connect strix-gateway:hugepages :system-files
+```
+
+### Use Snap Commands
+
+```bash
+# Health check
+curl http://localhost:8080/healthz
+
+# SVC shell helper command from snap
+snap run strix-gateway.ibm-svc-shell --help
+
+# CLI compatibility command exposed by the snap
+snap run strix-gateway.apollo --help
+```
+
+### Development Only: Local CLI Install (uv/pip)
+
+Use this path if you want to run the API and CLI directly from source.
+
+```bash
+# Install project + dev dependencies
 uv sync
+
+# Verify the CLI
+uv run strix --help
+```
+
+You can also install with pip:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+strix --help
+```
+
+### Development Only: Run Gateway From Source
+
+```bash
+# Optional runtime configuration overrides
+export STRIX_SPDK_SOCKET_PATH=/var/tmp/spdk.sock
+export STRIX_DATABASE_URL=sqlite+aiosqlite:///./strix_gateway.db
+
+# Start API service
+uv run uvicorn strix_gateway.main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+In a second terminal:
+
+```bash
+# Health check
+curl http://localhost:8080/healthz
+
+# Example CLI call
+uv run strix status
 ```
 
 ### Run tests (no SPDK required)
@@ -60,32 +158,14 @@ uv run pytest tests/unit/
 uv run pytest tests/integration/
 ```
 
-### Snap install and run
+### Run functional test scripts (dev/test)
 
 ```bash
-# Build the snap
-snapcraft
+# LXD-based functional test harness
+sudo ./scripts/lxd/functional_test_lxd.sh
 
-# Install locally for testing
-sudo snap install --dangerous ./strix-gateway_*.snap
-
-# Run the daemon command
-strix-gateway
-
-# Check health
-curl http://localhost:8080/healthz
-```
-
-The snap bundles runtime dependencies and is the preferred deployment artifact.
-
-### Start standalone (development)
-
-```bash
-# Set environment variables
-export STRIX_SPDK_SOCKET_PATH=/var/tmp/spdk.sock
-export STRIX_DATABASE_URL=sqlite+aiosqlite:///./strix_gateway.db
-
-uvicorn strix_gateway.main:app --host 0.0.0.0 --port 8080 --reload
+# VM consumer functional test harness
+sudo ./scripts/lxd/vm_consumer_test.sh
 ```
 
 ## Configuration
