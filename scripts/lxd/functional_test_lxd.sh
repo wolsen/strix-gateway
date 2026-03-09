@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lxd/functional_test_lxd.sh
 #
-# End-to-end functional test for Apollo Gateway using LXD VMs.
+# End-to-end functional test for Strix Gateway using LXD VMs.
 #
 # Launches a gateway VM (runs the strix-gateway snap — SPDK + FastAPI) and a
 # consumer VM (iSCSI + NVMeoF initiator).  The consumer drives storage
@@ -29,12 +29,59 @@ set -euo pipefail
 
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 log() { echo "[$(ts)] [INFO] $*"; }
+warn() { echo "[$(ts)] [WARN] $*" >&2; }
 err() { echo "[$(ts)] [ERROR] $*" >&2; }
 
 # lxc launch/init require a PTY for the image download progress bar;
 # without one they silently return exit-code 1 even on success.
 # Wrap these calls with `script -q` to provide a pseudo-terminal.
-lxc_pty() { script -q -c "lxc $*" /dev/null; }
+lxc_pty() {
+  local cmd="lxc"
+  local arg
+  for arg in "$@"; do
+    cmd+=" $(printf '%q' "${arg}")"
+  done
+  script -q -c "${cmd}" /dev/null
+}
+
+lxc_pty_launch_vm_secureboot_disabled() {
+  local image="$1"
+  local vm_name="$2"
+  local memory="$3"
+  local cpus="$4"
+
+  lxc_pty launch "${image}" "${vm_name}" --vm \
+    -c boot.mode=uefi-nosecureboot \
+    -c limits.memory="${memory}" \
+    -c limits.cpu="${cpus}" || true
+
+  if lxc info "${vm_name}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  warn "Failed with boot.mode=uefi-nosecureboot; retrying with security.secureboot=false"
+  lxc_pty launch "${image}" "${vm_name}" --vm \
+    -c limits.memory="${memory}" \
+    -c limits.cpu="${cpus}" \
+    -c security.secureboot=false || true
+
+  if lxc info "${vm_name}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  warn "Failed to launch ${vm_name} with security.secureboot=false; retrying with raw.qemu fallback"
+  lxc_pty launch "${image}" "${vm_name}" --vm \
+    -c limits.memory="${memory}" \
+    -c limits.cpu="${cpus}" \
+    -c raw.qemu="-machine q35,smm=off" || true
+
+  if lxc info "${vm_name}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  err "Unable to launch ${vm_name} with secure boot disabled"
+  return 1
+}
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -42,8 +89,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Tunables (override via environment)
 # ---------------------------------------------------------------------------
 
-GATEWAY_VM="${GATEWAY_VM:-apollo-gw-test}"
-CONSUMER_VM="${CONSUMER_VM:-apollo-consumer-test}"
+GATEWAY_VM="${GATEWAY_VM:-strix-gw-test}"
+CONSUMER_VM="${CONSUMER_VM:-strix-consumer-test}"
 IMAGE="${LXD_IMAGE:-ubuntu:24.04}"
 KEEP_VMS="${KEEP_VMS:-0}"
 
@@ -54,8 +101,8 @@ VM_CPUS_CONSUMER="${VM_CPUS_CONSUMER:-2}"
 
 SNAP_FILE="${SNAP_FILE:-}"
 
-ISCSI_TARGET_IQN="iqn.2026-02.lunacysystems.apollo:generic-arr:tgt"
-NVMEOF_TARGET_NQN="nqn.2026-02.io.lunacysystems:apollo:svc-arr:tgt"
+ISCSI_TARGET_IQN="iqn.2026-02.lunacysystems.strix:generic-arr:tgt"
+NVMEOF_TARGET_NQN="nqn.2026-02.io.lunacysystems:strix:svc-arr:tgt"
 ISCSI_PORT=3260
 NVMEOF_PORT=4420
 
@@ -123,14 +170,8 @@ log "Using snap: ${SNAP_FILE}"
 # ---------------------------------------------------------------------------
 
 log "Launching VMs (${GATEWAY_VM}, ${CONSUMER_VM}) from ${IMAGE}"
-lxc_pty launch "${IMAGE}" "${GATEWAY_VM}" --vm \
-  -c security.secureboot=false \
-  -c limits.memory="${VM_MEMORY_GW}" \
-  -c limits.cpu="${VM_CPUS_GW}"
-lxc_pty launch "${IMAGE}" "${CONSUMER_VM}" --vm \
-  -c security.secureboot=false \
-  -c limits.memory="${VM_MEMORY_CONSUMER}" \
-  -c limits.cpu="${VM_CPUS_CONSUMER}"
+lxc_pty_launch_vm_secureboot_disabled "${IMAGE}" "${GATEWAY_VM}" "${VM_MEMORY_GW}" "${VM_CPUS_GW}"
+lxc_pty_launch_vm_secureboot_disabled "${IMAGE}" "${CONSUMER_VM}" "${VM_MEMORY_CONSUMER}" "${VM_CPUS_CONSUMER}"
 
 wait_for_vm_agent() {
   local vm_name="$1"
@@ -351,7 +392,7 @@ log "Configuring vhost mode via snap set"
 lxc exec "${GATEWAY_VM}" -- snap set strix-gateway \
   vhost-enabled=true \
   vhost-domain=test.local \
-  vhost-hostname-override=apollo-gw
+  vhost-hostname-override=strix-gw
 
 log "Restarting gateway in vhost mode"
 # The configure hook will have already restarted the service; ensure it is up.
@@ -388,4 +429,4 @@ log "Vhost validation PASSED"
 # Done
 # ---------------------------------------------------------------------------
 
-echo "[$(ts)] [PASS] Apollo Gateway LXD functional test complete"
+echo "[$(ts)] [PASS] Strix Gateway LXD functional test complete"
