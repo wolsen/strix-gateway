@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""HTTP client wrapper for the Apollo Gateway REST API.
+"""HTTP client wrapper for the Strix Gateway REST API.
 
 All public methods return parsed JSON (dicts/lists).  Non-2xx responses
 are translated into :class:`~strix_gateway.cli.errors.APIError`.
@@ -17,7 +17,7 @@ import httpx
 from strix_gateway.cli.errors import APIError, ValidationError
 
 
-class ApolloClient:
+class StrixClient:
     """Thin synchronous httpx wrapper with name-resolution helpers."""
 
     def __init__(self, base_url: str, timeout: float = 30.0):

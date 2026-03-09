@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Pydantic models for Apollo Gateway topology files.
+"""Pydantic models for Strix Gateway topology files.
 
 These models are self-contained within the CLI package so that the CLI
 can validate topology YAML/TOML files without importing any server-side
@@ -98,7 +98,7 @@ class DelaySpec(BaseModel):
 # ------------------------------------------------------------------
 
 class TopologyFile(BaseModel):
-    """Root model for a complete Apollo Gateway topology file."""
+    """Root model for a complete Strix Gateway topology file."""
 
     arrays: list[ArraySpec] = []
     pools: list[PoolSpec] = []

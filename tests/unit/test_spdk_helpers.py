@@ -49,7 +49,7 @@ def _pool(name="lv0", backend_type="malloc", size_mb=1024, aio_path=None, pool_i
     return p
 
 
-def _volume(vol_id="vid-1", size_mb=512, bdev_name="lv0/apollo-vol-vid-1"):
+def _volume(vol_id="vid-1", size_mb=512, bdev_name="lv0/strix-vol-vid-1"):
     v = MagicMock()
     v.id = vol_id
     v.size_mb = size_mb
@@ -64,8 +64,8 @@ def _ec(ec_id="ec-1", protocol="iscsi", target_iqn=None, target_nqn=None,
     ec = MagicMock()
     ec.id = ec_id
     ec.protocol = protocol
-    iqn = target_iqn or f"iqn.2026-02.lunacysystems.apollo:{ec_id}"
-    nqn = target_nqn or f"nqn.2026-02.io.lunacysystems:apollo:{ec_id}"
+    iqn = target_iqn or f"iqn.2026-02.lunacysystems.strix:{ec_id}"
+    nqn = target_nqn or f"nqn.2026-02.io.lunacysystems:strix:{ec_id}"
     if protocol == "iscsi":
         ec.targets = json.dumps({"target_iqn": iqn})
         ec.addresses = json.dumps({"portals": [f"{portal_ip}:{portal_port}"]})
@@ -347,9 +347,9 @@ class TestEnsureLvol:
         client = MagicMock(spec=SPDKClient)
         with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=False):
             name = ensure_lvol(client, _volume(vol_id="abc"), "mypool", "test-sub")
-        assert name == "test-sub.mypool/apollo-vol-abc"
+        assert name == "test-sub.mypool/strix-vol-abc"
         client.call.assert_called_once_with("bdev_lvol_create", {
-            "lvol_name": "apollo-vol-abc",
+            "lvol_name": "strix-vol-abc",
             "size_in_mib": 512,
             "lvs_name": "test-sub.mypool",
         })
@@ -358,7 +358,7 @@ class TestEnsureLvol:
         client = MagicMock(spec=SPDKClient)
         with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=True):
             name = ensure_lvol(client, _volume(vol_id="abc"), "mypool", "test-sub")
-        assert name == "test-sub.mypool/apollo-vol-abc"
+        assert name == "test-sub.mypool/strix-vol-abc"
         client.call.assert_not_called()
 
 
@@ -402,8 +402,8 @@ class TestEnsureNvmefExport:
             ensure_nvmef_export(client, ec, _settings())
         mock_create.assert_called_once_with(
             client, ec.target_nqn,
-            model_number="Apollo Gateway",
-            serial_number="APOLLO0001",
+            model_number="Strix Gateway",
+            serial_number="STRIX0001",
         )
         mock_listener.assert_called_once()
 

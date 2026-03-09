@@ -1,8 +1,8 @@
-# Apollo Gateway topology: multi-array with different protocols
+# Strix Gateway topology: multi-array with different protocols
 #
 # Usage:
-#   apollo validate -f examples/ci/topo-multi-subsystem.yaml
-#   apollo apply -f examples/ci/topo-multi-subsystem.yaml
+#   strix validate -f examples/ci/topo-multi-subsystem.yaml
+#   strix apply -f examples/ci/topo-multi-subsystem.yaml
 
 arrays:
   - name: svc-prod

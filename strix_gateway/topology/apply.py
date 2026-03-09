@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Apply a validated topology specification to a live Apollo Gateway instance.
+"""Apply a validated topology specification to a live Strix Gateway instance.
 
 Resources are created in dependency order:
   1. Arrays (+ declared TransportEndpoints)

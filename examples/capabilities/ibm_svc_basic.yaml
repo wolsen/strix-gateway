@@ -1,8 +1,8 @@
 # Capability profile override: IBM SVC basic
 #
 # Usage:
-#   apollo subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml
-#   apollo subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml --merge
+#   strix subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml
+#   strix subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml --merge
 
 model: "SVC-SAFER-FAKE-9000"
 version: "8.6.0.0"

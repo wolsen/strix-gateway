@@ -3,7 +3,7 @@ base: core24
 version: '0.1.0'
 summary: Virtual storage device control-plane backed by SPDK
 description: |
-  Apollo Gateway provides a REST API for managing virtual storage devices
+  Strix Gateway provides a REST API for managing virtual storage devices
   using SPDK (Storage Performance Development Kit) with iSCSI and NVMe-oF
   TCP export protocols.
 
@@ -20,8 +20,8 @@ description: |
     snap set strix-gateway iscsi-portal-port=3260
     snap set strix-gateway nvmef-portal-ip=0.0.0.0
     snap set strix-gateway nvmef-portal-port=4420
-    snap set strix-gateway iqn-prefix=iqn.2026-02.lunacysystems.apollo
-    snap set strix-gateway nqn-prefix=nqn.2026-02.io.lunacysystems:apollo
+    snap set strix-gateway iqn-prefix=iqn.2026-02.lunacysystems.strix
+    snap set strix-gateway nqn-prefix=nqn.2026-02.io.lunacysystems:strix
 
 grade: devel
 confinement: strict
@@ -94,8 +94,8 @@ apps:
       - network
       - network-bind
 
-  apollo:
-    command: bin/apollo
+  strix:
+    command: bin/strix
     plugs:
       - network
       - network-bind
@@ -189,7 +189,7 @@ parts:
       install -D -m 755 build/bin/spdk_tgt \
         "${SNAPCRAFT_PART_INSTALL}/usr/bin/spdk_tgt"
 
-  # ── Apollo Gateway Python service ───────────────────────────────────────
+  # ── Strix Gateway Python service ───────────────────────────────────────
   strix-gateway:
     plugin: uv
     source: .

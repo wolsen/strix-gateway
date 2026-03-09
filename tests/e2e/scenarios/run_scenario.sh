@@ -37,8 +37,8 @@ FC_ROOT="${8:-}"
 
 DRIVER_NAME="$(basename "${DRIVER_DIR}")"
 GATEWAY_PORT="${GATEWAY_PORT:-8080}"
-SVC_PASSWORD="${SVC_PASSWORD:-apollo_svc_pass}"
-TARGET_IQN="${TARGET_IQN:-iqn.2026-03.com.lunacy:apollo.e2e.target}"
+SVC_PASSWORD="${SVC_PASSWORD:-strix_svc_pass}"
+TARGET_IQN="${TARGET_IQN:-iqn.2026-03.com.lunacy:strix.e2e.target}"
 FC_TARGET_WWPN="${FC_TARGET_WWPN:-0x500a09c0ffe1aa01}"
 
 # Determine topology file

@@ -1,4 +1,4 @@
-# Apollo Gateway topology: single IBM SVC array
+# Strix Gateway topology: single IBM SVC array
 #
 # Usage:
 #   python -m strix_gateway.topology.load examples/ci/single_svc.yaml

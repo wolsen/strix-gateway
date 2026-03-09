@@ -1,13 +1,13 @@
-# Apollo Gateway Compatibility Layer Architecture  
-**Project:** Apollo Gateway  
+# Strix Gateway Compatibility Layer Architecture  
+**Project:** Strix Gateway  
 **Organization:** Lunacy Systems  
 
 ---
 
 ## 1. Purpose
 
-Apollo Gateway provides a canonical storage control-plane backed by SPDK.  
-To support OpenStack Cinder driver functional testing across multiple vendors, Apollo implements **vendor compatibility façades** that emulate the management interfaces of real storage arrays.
+Strix Gateway provides a canonical storage control-plane backed by SPDK.  
+To support OpenStack Cinder driver functional testing across multiple vendors, Strix implements **vendor compatibility façades** that emulate the management interfaces of real storage arrays.
 
 This document defines:
 
@@ -21,7 +21,7 @@ This document defines:
 
 ## 2. High-Level Architecture
 
-Apollo Gateway consists of three logical layers:
+Strix Gateway consists of three logical layers:
 
 ```
 +---------------------------------------------------------+
@@ -205,7 +205,7 @@ POST /volume → 202 Accepted
 { "jobId": 123 }
 ```
 
-Apollo should:
+Strix should:
 
 - Create a job record
 - Execute canonical operation immediately
@@ -350,7 +350,7 @@ IBM SVC façade must also test:
 
 ## 13. Long-Term Evolution
 
-Apollo Gateway compatibility layer is designed to support:
+Strix Gateway compatibility layer is designed to support:
 
 - Multiple vendor personas simultaneously
 - Vendor behavior profiles
@@ -364,7 +364,7 @@ The canonical core remains stable while façades evolve.
 
 ## 14. Guiding Principle
 
-Apollo Gateway is not pretending to be a specific array.
+Strix Gateway is not pretending to be a specific array.
 
 It is:
 

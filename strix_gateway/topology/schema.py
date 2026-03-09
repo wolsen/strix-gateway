@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Pydantic models for the Apollo Gateway topology specification.
+"""Pydantic models for the Strix Gateway topology specification.
 
 A topology file declares arrays, endpoints, pools, volumes, hosts, and
 mappings in a single YAML or TOML document.  Example (YAML)::
@@ -10,7 +10,7 @@ mappings in a single YAML or TOML document.  Example (YAML)::
         vendor: ibm_svc
         endpoints:
           - protocol: iscsi
-            targets: {"target_iqn": "iqn.2024-01.com.apollo:svc-a"}
+            targets: {"target_iqn": "iqn.2024-01.com.strix:svc-a"}
             addresses: {"portals": ["10.0.0.1:3260"]}
           - protocol: fc
             targets: {"target_wwpns": ["50:00:00:00:00:00:00:01"]}
@@ -104,7 +104,7 @@ class MappingSpec(BaseModel):
 
 
 class TopologySpec(BaseModel):
-    """Root model for a complete Apollo Gateway topology specification."""
+    """Root model for a complete Strix Gateway topology specification."""
 
     arrays: list[ArraySpec] = []
     pools: list[PoolSpec] = []

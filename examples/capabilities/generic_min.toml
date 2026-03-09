@@ -1,9 +1,9 @@
 # Capability profile override: generic minimal (TOML)
 #
 # Usage:
-#   apollo subsystem set-capabilities my-sub -f examples/capabilities/generic_min.toml
+#   strix subsystem set-capabilities my-sub -f examples/capabilities/generic_min.toml
 
-model = "Apollo-Generic"
+model = "Strix-Generic"
 version = "1.0.0"
 
 [features]

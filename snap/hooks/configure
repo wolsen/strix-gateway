@@ -3,7 +3,7 @@
 #
 # Runs whenever `snap set strix-gateway key=value` is called.
 # Reads operator-supplied config values via snapctl, writes them to
-# $SNAP_DATA/config/apollo.env, then restarts the gateway service so the
+# $SNAP_DATA/config/strix.env, then restarts the gateway service so the
 # new settings take effect.
 #
 # Supported keys and their STRIX_* environment variable equivalents:
@@ -26,7 +26,7 @@ set -euo pipefail
 
 mkdir -p "${SNAP_DATA}/config"
 
-env_file="${SNAP_DATA}/config/apollo.env"
+env_file="${SNAP_DATA}/config/strix.env"
 
 # Build the env file from currently-set snap config keys.
 # Only write lines for keys that have been explicitly set by the operator;

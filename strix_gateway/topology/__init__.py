@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Topology specification package for Apollo Gateway.
+"""Topology specification package for Strix Gateway.
 
 Provides YAML/TOML-driven declarative configuration of arrays, endpoints,
 pools, volumes, hosts, and mappings.  Typical usage::

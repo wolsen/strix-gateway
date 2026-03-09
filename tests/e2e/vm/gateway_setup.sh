@@ -6,7 +6,7 @@
 # Runs INSIDE the gateway VM. Installs:
 #   1. Fake SPDK socket
 #   2. iSCSI target (underlay)
-#   3. Apollo Gateway
+#   3. Strix Gateway
 #   4. SSH facade for SVC compatibility
 #   5. Keystone (SQLite)
 #   6. Cinder (SQLite + RabbitMQ)
@@ -16,9 +16,9 @@
 #
 # Environment variables:
 #   GATEWAY_PORT         (default: 8080)
-#   SVC_PASSWORD         (default: apollo_svc_pass)
+#   SVC_PASSWORD         (default: strix_svc_pass)
 #   OS_PASSWORD          (default: admin)
-#   TARGET_IQN           (default: iqn.2026-03.com.lunacy:apollo.e2e.target)
+#   TARGET_IQN           (default: iqn.2026-03.com.lunacy:strix.e2e.target)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,8 +31,8 @@ source /root/e2e-lib/openstack.sh
 export DEBIAN_FRONTEND=noninteractive
 
 GATEWAY_PORT="${GATEWAY_PORT:-8080}"
-SVC_PASSWORD="${SVC_PASSWORD:-apollo_svc_pass}"
-TARGET_IQN="${TARGET_IQN:-iqn.2026-03.com.lunacy:apollo.e2e.target}"
+SVC_PASSWORD="${SVC_PASSWORD:-strix_svc_pass}"
+TARGET_IQN="${TARGET_IQN:-iqn.2026-03.com.lunacy:strix.e2e.target}"
 
 trap 'log_error "Gateway setup FAILED at line $LINENO"; exit 1' ERR
 
@@ -57,7 +57,7 @@ start_fake_spdk
 setup_iscsi_target "${TARGET_IQN}" 3260 512
 
 # ---------------------------------------------------------------------------
-log_step "Phase 3: Apollo Gateway"
+log_step "Phase 3: Strix Gateway"
 # ---------------------------------------------------------------------------
 install_gateway /root/strix-gateway
 setup_ssh_facade /root/strix-gateway

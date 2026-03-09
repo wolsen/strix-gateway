@@ -1,4 +1,4 @@
-# Apollo Gateway topology: SVC iSCSI E2E test (non-vhost)
+# Strix Gateway topology: SVC iSCSI E2E test (non-vhost)
 arrays:
   - name: default
     vendor: ibm_svc

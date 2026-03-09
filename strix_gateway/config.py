@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     nvmef_portal_ip: str = "0.0.0.0"
     nvmef_portal_port: int = 4420
 
-    iqn_prefix: str = "iqn.2026-02.lunacysystems.apollo"
-    nqn_prefix: str = "nqn.2026-02.io.lunacysystems:apollo"
+    iqn_prefix: str = "iqn.2026-02.lunacysystems.strix"
+    nqn_prefix: str = "nqn.2026-02.io.lunacysystems:strix"
 
     api_base_url: str = "http://localhost:8080"
 

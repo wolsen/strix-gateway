@@ -6,9 +6,9 @@ Each function checks whether the resource already exists in SPDK before
 attempting creation, making them safe to call on repeated reconcile passes.
 
 SPDK naming conventions (v0.2 — array-scoped):
-  - Backing bdev:   apollo-pool-{pool.id}
+  - Backing bdev:   strix-pool-{pool.id}
   - Lvol store:     {array_name}.{pool_name}
-  - Lvol bdev:      {array_name}.{pool_name}/apollo-vol-{volume_id}
+  - Lvol bdev:      {array_name}.{pool_name}/strix-vol-{volume_id}
   - iSCSI IQN:      stored on TransportEndpoint.targets.target_iqn
   - NVMe NQN:       stored on TransportEndpoint.targets.subsystem_nqn
 """
@@ -62,8 +62,8 @@ def _lvstore_name(array_name: str, pool_name: str) -> str:
 
 
 def _lvol_bdev_name(array_name: str, pool_name: str, volume_id: str) -> str:
-    """Full SPDK bdev name for an lvol: '{lvstore}/apollo-vol-{volume_id}'."""
-    return f"{_lvstore_name(array_name, pool_name)}/apollo-vol-{volume_id}"
+    """Full SPDK bdev name for an lvol: '{lvstore}/strix-vol-{volume_id}'."""
+    return f"{_lvstore_name(array_name, pool_name)}/strix-vol-{volume_id}"
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +100,7 @@ def ensure_pool(client: SPDKClient, pool: Pool, array_name: str) -> None:
     """
     from strix_gateway.core.models import PoolBackendType
 
-    backing_bdev = f"apollo-pool-{pool.id}"
+    backing_bdev = f"strix-pool-{pool.id}"
     lvs_name = _lvstore_name(array_name, pool.name)
 
     if not _bdev_exists(client, backing_bdev):
@@ -168,7 +168,7 @@ def ensure_lvol(
     array_name:
         Name of the owning array (used in bdev naming).
     """
-    lvol_name = f"apollo-vol-{volume.id}"
+    lvol_name = f"strix-vol-{volume.id}"
     full_name = _lvol_bdev_name(array_name, pool_name, volume.id)
     lvs_name = _lvstore_name(array_name, pool_name)
 
@@ -250,8 +250,8 @@ def ensure_nvmef_export(
     client: SPDKClient,
     ep: TransportEndpoint,
     settings: Settings,
-    model_number: str = "Apollo Gateway",
-    serial_number: str = "APOLLO0001",
+    model_number: str = "Strix Gateway",
+    serial_number: str = "STRIX0001",
 ) -> None:
     """Ensure NVMe-oF TCP transport and subsystem exist for *ep*."""
     targets = _ep_targets(ep)

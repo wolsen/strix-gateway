@@ -1,9 +1,9 @@
-# Apollo Gateway topology: minimal single-array example
+# Strix Gateway topology: minimal single-array example
 #
 # Usage:
-#   apollo validate -f examples/ci/topo-min.yaml
-#   apollo apply -f examples/ci/topo-min.yaml
-#   apollo smoke -f examples/ci/topo-min.yaml
+#   strix validate -f examples/ci/topo-min.yaml
+#   strix apply -f examples/ci/topo-min.yaml
+#   strix smoke -f examples/ci/topo-min.yaml
 
 arrays:
   - name: dev-arr

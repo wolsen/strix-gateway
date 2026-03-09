@@ -55,7 +55,7 @@ class CapabilityProfile(BaseModel):
 
 _PERSONA_DEFAULTS: dict[str, CapabilityProfile] = {
     "generic": CapabilityProfile(
-        model="Apollo-Generic",
+        model="Strix-Generic",
         version="1.0.0",
         features=CapabilityFeatures(
             thin_provisioning=True,

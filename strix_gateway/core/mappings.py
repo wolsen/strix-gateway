@@ -247,8 +247,8 @@ async def _wire_spdk_underlay(
             )
             arr = arr_result.scalar_one()
             profile = arr.profile_dict
-            model_str = profile.get("model", "Apollo Gateway")
-            serial_str = f"APOLLO-{arr.name[:8].upper()}"
+            model_str = profile.get("model", "Strix Gateway")
+            serial_str = f"STRIX-{arr.name[:8].upper()}"
             await asyncio.to_thread(
                 ensure_nvmef_export, spdk, underlay_ep, settings,
                 model_str, serial_str,

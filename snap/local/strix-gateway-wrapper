@@ -1,7 +1,7 @@
 #!/bin/bash
 # snap/local/strix-gateway-wrapper
 #
-# Wrapper for the Apollo Gateway FastAPI service.
+# Wrapper for the Strix Gateway FastAPI service.
 #
 # Applies default snap-appropriate paths for the SPDK socket and SQLite
 # database, then overlays any operator-supplied overrides written by the
@@ -25,10 +25,10 @@ mkdir -p "${SNAP_DATA}"
 # The file is absent on first boot — that is expected and fine.
 # Use set -a so sourced variables are automatically exported to child
 # processes (Python pydantic_settings reads from the environment).
-if [ -f "${SNAP_DATA}/config/apollo.env" ]; then
+if [ -f "${SNAP_DATA}/config/strix.env" ]; then
   set -a
   # shellcheck disable=SC1090
-  . "${SNAP_DATA}/config/apollo.env"
+  . "${SNAP_DATA}/config/strix.env"
   set +a
 fi
 

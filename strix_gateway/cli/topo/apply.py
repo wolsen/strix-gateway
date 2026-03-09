@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from strix_gateway.cli.errors import APIError, ValidationError
 
 if TYPE_CHECKING:
-    from strix_gateway.cli.client import ApolloClient
+    from strix_gateway.cli.client import StrixClient
     from strix_gateway.cli.topo.models import TopologyFile
 
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 # ------------------------------------------------------------------
 
 def apply_topology(
-    client: "ApolloClient",
+    client: "StrixClient",
     topo: "TopologyFile",
     *,
     strict: bool = False,
@@ -182,7 +182,7 @@ def apply_topology(
 
 
 def _strict_report(
-    client: "ApolloClient",
+    client: "StrixClient",
     topo: "TopologyFile",
     actions: list[str],
 ) -> None:
@@ -217,7 +217,7 @@ def _strict_report(
 # ------------------------------------------------------------------
 
 def smoke_test(
-    client: "ApolloClient",
+    client: "StrixClient",
     topo: "TopologyFile",
     *,
     verbose: bool = False,

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Cross-reference validation for Apollo Gateway topology specifications.
+"""Cross-reference validation for Strix Gateway topology specifications.
 
 :func:`validate` performs structural checks across all sections of a
 :class:`~strix_gateway.topology.schema.TopologySpec` and returns a list of

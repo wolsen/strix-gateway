@@ -94,7 +94,7 @@ async def test_reconcile_with_pool_and_volume(session_factory, default_arr, spdk
         await session.commit()
 
     with patch("strix_gateway.core.reconcile.ensure_pool") as mock_pool, \
-         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="rpool/apollo-vol-x") as mock_lvol, \
+         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="rpool/strix-vol-x") as mock_lvol, \
          patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
          patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
          patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
@@ -134,7 +134,7 @@ async def test_reconcile_with_endpoints_and_mappings(session_factory, default_ar
         session.add(pool)
         await session.flush()
         vol = Volume(name="rv2", pool_id=pool.id, size_mb=256,
-                     status="in_use", bdev_name="rp2/apollo-vol-rv2",
+                     status="in_use", bdev_name="rp2/strix-vol-rv2",
                      array_id=default_arr.id)
         session.add(vol)
         await session.flush()
@@ -166,7 +166,7 @@ async def test_reconcile_with_endpoints_and_mappings(session_factory, default_ar
         await session.commit()
 
     with patch("strix_gateway.core.reconcile.ensure_pool"), \
-         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="rp2/apollo-vol-rv2"), \
+         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="rp2/strix-vol-rv2"), \
          patch("strix_gateway.core.reconcile.ensure_iscsi_export") as mock_iscsi_exp, \
          patch("strix_gateway.core.reconcile.ensure_nvmef_export") as mock_nvme_exp, \
          patch("strix_gateway.core.reconcile.ensure_iscsi_mapping") as mock_iscsi_map, \
@@ -274,7 +274,7 @@ async def test_reconcile_ensure_mapping_failure_is_non_fatal(session_factory, de
         session.add(pool)
         await session.flush()
         vol = Volume(name="mf-vol", pool_id=pool.id, size_mb=256,
-                     status="in_use", bdev_name="mf-pool/apollo-vol-x",
+                     status="in_use", bdev_name="mf-pool/strix-vol-x",
                      array_id=default_arr.id)
         session.add(vol)
         await session.flush()
@@ -296,7 +296,7 @@ async def test_reconcile_ensure_mapping_failure_is_non_fatal(session_factory, de
         await session.commit()
 
     with patch("strix_gateway.core.reconcile.ensure_pool"), \
-         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="mf-pool/apollo-vol-x"), \
+         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="mf-pool/strix-vol-x"), \
          patch("strix_gateway.core.reconcile.ensure_iscsi_export"), \
          patch("strix_gateway.core.reconcile.ensure_iscsi_mapping", side_effect=Exception("map fail")), \
          patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \

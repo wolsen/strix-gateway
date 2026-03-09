@@ -1,6 +1,6 @@
 # Snap Configuration Reference
 
-Apollo Gateway configuration is managed via `snap set` / `snap get`. All keys are written to `$SNAP_DATA/config/apollo.env` as `STRIX_*` environment variables and applied on service restart.
+Strix Gateway configuration is managed via `snap set` / `snap get`. All keys are written to `$SNAP_DATA/config/strix.env` as `STRIX_*` environment variables and applied on service restart.
 
 ## Configuration Keys
 
@@ -12,8 +12,8 @@ Apollo Gateway configuration is managed via `snap set` / `snap get`. All keys ar
 | `iscsi-portal-port` | `STRIX_ISCSI_PORTAL_PORT` | `3260` | iSCSI portal listen port |
 | `nvmef-portal-ip` | `STRIX_NVMEF_PORTAL_IP` | `0.0.0.0` | NVMe-oF TCP portal listen address |
 | `nvmef-portal-port` | `STRIX_NVMEF_PORTAL_PORT` | `4420` | NVMe-oF TCP portal listen port |
-| `iqn-prefix` | `STRIX_IQN_PREFIX` | `iqn.2026-02.lunacysystems.apollo` | iSCSI target IQN prefix |
-| `nqn-prefix` | `STRIX_NQN_PREFIX` | `nqn.2026-02.io.lunacysystems:apollo` | NVMe-oF NQN prefix |
+| `iqn-prefix` | `STRIX_IQN_PREFIX` | `iqn.2026-02.lunacysystems.strix` | iSCSI target IQN prefix |
+| `nqn-prefix` | `STRIX_NQN_PREFIX` | `nqn.2026-02.io.lunacysystems:strix` | NVMe-oF NQN prefix |
 
 ### Virtual-Host Multiplexing
 
@@ -100,5 +100,5 @@ Restoring these files before starting the gateway ensures previously distributed
 |------|-------------|
 | `$SNAP_COMMON/run/spdk.sock` | SPDK JSON-RPC Unix socket |
 | `$SNAP_DATA/strix_gateway.db` | SQLite database |
-| `$SNAP_DATA/config/apollo.env` | Generated environment file |
+| `$SNAP_DATA/config/strix.env` | Generated environment file |
 | `$SNAP_COMMON/tls/` | TLS certificates and keys |

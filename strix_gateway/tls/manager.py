@@ -54,7 +54,7 @@ class TLSManager:
             key = ec.generate_private_key(ec.SECP256R1())
             now = datetime.datetime.now(datetime.timezone.utc)
             subject = x509.Name([
-                x509.NameAttribute(NameOID.COMMON_NAME, "Apollo Gateway Internal CA"),
+                x509.NameAttribute(NameOID.COMMON_NAME, "Strix Gateway Internal CA"),
                 x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Lunacy Systems"),
             ])
             cert = (

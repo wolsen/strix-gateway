@@ -39,7 +39,7 @@ async def _create_fc_endpoint(
 async def _create_iscsi_endpoint(
     client: AsyncClient,
     array_id: str,
-    target_iqn: str = "iqn.2026-03.com.lunacy:apollo.fc.underlay",
+    target_iqn: str = "iqn.2026-03.com.lunacy:strix.fc.underlay",
 ) -> dict:
     resp = await client.post(f"/v1/arrays/{array_id}/endpoints", json={
         "protocol": "iscsi",
@@ -146,7 +146,7 @@ async def test_fc_mapping_and_attachments(client: AsyncClient):
 
     # Underlay: iSCSI with target info and target_lun
     assert att["underlay"]["protocol"] == "iscsi"
-    assert att["underlay"]["targets"]["target_iqn"] == "iqn.2026-03.com.lunacy:apollo.fc.underlay"
+    assert att["underlay"]["targets"]["target_iqn"] == "iqn.2026-03.com.lunacy:strix.fc.underlay"
     assert att["underlay"]["addresses"]["portals"] == ["127.0.0.1:3260"]
     assert att["underlay"]["target_lun"] == 0
 
@@ -174,7 +174,7 @@ async def test_fc_lun_allocation(client: AsyncClient):
     )
     iscsi_ep = await _create_iscsi_endpoint(
         client, array_id,
-        target_iqn="iqn.2026-03.com.lunacy:apollo.fc.lun-test",
+        target_iqn="iqn.2026-03.com.lunacy:strix.fc.lun-test",
     )
 
     m1 = await _create_mapping(

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Shared pytest fixtures for Apollo Gateway tests."""
+"""Shared pytest fixtures for Strix Gateway tests."""
 
 from __future__ import annotations
 

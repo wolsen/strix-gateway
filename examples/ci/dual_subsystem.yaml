@@ -1,4 +1,4 @@
-# Apollo Gateway topology: two IBM SVC arrays sharing one gateway
+# Strix Gateway topology: two IBM SVC arrays sharing one gateway
 #
 # Demonstrates:
 #  - Two arrays with the same pool name ("gold") — allowed because pools

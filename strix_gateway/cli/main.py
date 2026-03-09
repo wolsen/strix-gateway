@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Apollo Gateway CLI — Typer application.
+"""Strix Gateway CLI — Typer application.
 
-Entrypoint: ``apollo`` console script (see pyproject.toml).
+Entrypoint: ``strix`` console script (see pyproject.toml).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Optional
 
 import typer
 
-from strix_gateway.cli.client import ApolloClient
+from strix_gateway.cli.client import StrixClient
 from strix_gateway.cli.errors import APIError, CLIError, ValidationError
 from strix_gateway.cli.output import OutputFormat, render
 
@@ -23,8 +23,8 @@ from strix_gateway.cli.output import OutputFormat, render
 # =====================================================================
 
 app = typer.Typer(
-    name="apollo",
-    help="Apollo Gateway CLI — virtual storage device controller by Lunacy Systems",
+    name="strix",
+    help="Strix Gateway CLI — virtual storage device controller by Lunacy Systems",
     no_args_is_help=True,
 )
 
@@ -60,9 +60,9 @@ class _State:
 _state = _State()
 
 
-def _client() -> ApolloClient:
-    """Build a new :class:`ApolloClient` from current global state."""
-    return ApolloClient(_state.url, timeout=_state.timeout)
+def _client() -> StrixClient:
+    """Build a new :class:`StrixClient` from current global state."""
+    return StrixClient(_state.url, timeout=_state.timeout)
 
 
 # =====================================================================
@@ -110,7 +110,7 @@ def main_callback(
         "",
         "--url",
         envvar="STRIX_URL",
-        help="Apollo Gateway API base URL",
+        help="Strix Gateway API base URL",
     ),
     output: OutputFormat = typer.Option(
         OutputFormat.table,
@@ -122,7 +122,7 @@ def main_callback(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose / debug output"),
     timeout: int = typer.Option(30, "--timeout", help="HTTP request timeout in seconds"),
 ):
-    """Apollo Gateway CLI — manage arrays, pools, volumes, hosts, and mappings."""
+    """Strix Gateway CLI — manage arrays, pools, volumes, hosts, and mappings."""
     _state.url = url or "http://localhost:8080"
     _state.output = output
     _state.quiet = quiet
@@ -806,7 +806,7 @@ def smoke_cmd(
 # =====================================================================
 
 def cli() -> None:
-    """``apollo`` console-script entrypoint."""
+    """``strix`` console-script entrypoint."""
     app()
 
 

@@ -2,11 +2,11 @@
 
 ## Problem
 
-OpenStack Cinder storage drivers connect to vendor REST APIs on standard ports (443/80) using the hostname configured by the operator. Apollo Gateway emulates multiple storage arrays (subsystems), but traditionally exposes a single HTTP endpoint. To avoid modifying Cinder drivers, Apollo must route incoming HTTPS requests to the correct subsystem based on the hostname the driver connects to.
+OpenStack Cinder storage drivers connect to vendor REST APIs on standard ports (443/80) using the hostname configured by the operator. Strix Gateway emulates multiple storage arrays (subsystems), but traditionally exposes a single HTTP endpoint. To avoid modifying Cinder drivers, Strix must route incoming HTTPS requests to the correct subsystem based on the hostname the driver connects to.
 
 ## How It Works
 
-When vhost mode is enabled, Apollo Gateway:
+When vhost mode is enabled, Strix Gateway:
 
 1. **Generates an internal CA** and per-subsystem leaf certificates with correct SANs
 2. **Listens on port 443** (configurable) with TLS enabled
@@ -82,7 +82,7 @@ sudo snap set strix-gateway tls-mode=wildcard
 
 ### Internal CA
 
-On first startup with vhost enabled, Apollo generates:
+On first startup with vhost enabled, Strix generates:
 
 - `$SNAP_COMMON/tls/ca.key` — ECDSA P-256 private key (600 permissions)
 - `$SNAP_COMMON/tls/ca.crt` — Self-signed CA certificate (10-year validity)
@@ -93,7 +93,7 @@ Leaf certificates are stored in `$SNAP_COMMON/tls/leaf/`.
 
 ```bash
 # Via API
-curl -k https://<any-vhost-fqdn>/v1/tls/ca > apollo-ca.crt
+curl -k https://<any-vhost-fqdn>/v1/tls/ca > strix-ca.crt
 
 # Via filesystem (on the gateway host)
 cat /var/snap/strix-gateway/common/tls/ca.crt
@@ -104,28 +104,28 @@ cat /var/snap/strix-gateway/common/tls/ca.crt
 **Ubuntu/Debian:**
 
 ```bash
-sudo cp apollo-ca.crt /usr/local/share/ca-certificates/strix-gateway.crt
+sudo cp strix-ca.crt /usr/local/share/ca-certificates/strix-gateway.crt
 sudo update-ca-certificates
 ```
 
 **LXD container:**
 
 ```bash
-lxc file push apollo-ca.crt mycontainer/usr/local/share/ca-certificates/strix-gateway.crt
+lxc file push strix-ca.crt mycontainer/usr/local/share/ca-certificates/strix-gateway.crt
 lxc exec mycontainer -- update-ca-certificates
 ```
 
 **Python (requests/urllib3):**
 
 ```bash
-export REQUESTS_CA_BUNDLE=/path/to/apollo-ca.crt
+export REQUESTS_CA_BUNDLE=/path/to/strix-ca.crt
 # or
-export SSL_CERT_FILE=/path/to/apollo-ca.crt
+export SSL_CERT_FILE=/path/to/strix-ca.crt
 ```
 
 ### Certificate Rotation
 
-Leaf certificates are issued with 365-day validity. Apollo checks for expiration on startup and when `POST /v1/tls/sync` is called. Certificates are reissued when:
+Leaf certificates are issued with 365-day validity. Strix checks for expiration on startup and when `POST /v1/tls/sync` is called. Certificates are reissued when:
 
 - The cert file is missing
 - SANs have changed (e.g. subsystem renamed)
@@ -141,7 +141,7 @@ curl -X POST https://<any-vhost-fqdn>/v1/tls/sync
 
 For CI environments that need a persistent CA:
 
-1. Let Apollo generate the CA on first run
+1. Let Strix generate the CA on first run
 2. Back up `$SNAP_COMMON/tls/ca.key` and `$SNAP_COMMON/tls/ca.crt`
 3. Pre-install the CA cert in CI base images
 4. Restoring the backed-up CA files ensures leaf certs remain trusted across gateway rebuilds
@@ -152,19 +152,19 @@ For CI environments that need a persistent CA:
 
 The Cinder driver or client must:
 
-1. Trust the Apollo CA certificate
+1. Trust the Strix CA certificate
 2. Connect using the subsystem's FQDN (not an IP address)
 3. DNS must resolve the FQDN to the gateway's IP
 
 ### Relaxed verification (`verify=no`)
 
-Works regardless of CA trust or hostname. Apollo still serves the correct certificate via SNI, but the client ignores verification errors. Common in development/lab environments.
+Works regardless of CA trust or hostname. Strix still serves the correct certificate via SNI, but the client ignores verification errors. Common in development/lab environments.
 
 ## IP Address Considerations
 
 If a driver connects by IP address instead of hostname:
 
-- **SNI will be absent** — Apollo serves the default subsystem's certificate
+- **SNI will be absent** — Strix serves the default subsystem's certificate
 - **Hostname verification fails** — the certificate's SANs contain DNS names, not IP addresses
 - **Host header routing still works** if the driver sends a `Host` header with the FQDN
 
@@ -208,7 +208,7 @@ Returns the CA certificate in PEM format (`application/x-pem-file`).
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `certificate verify failed` | Client does not trust the Apollo CA | Install the CA cert (see above) |
+| `certificate verify failed` | Client does not trust the Strix CA | Install the CA cert (see above) |
 | `hostname mismatch` | Client connects by IP or wrong hostname | Use the correct FQDN; check `GET /v1/vhosts` |
 | HTTP 404 `Unknown host: ...` | Host header doesn't match any subsystem | Check FQDN spelling; `vhost-require-match=false` to disable |
 | `No TLS leaf certificates found` | No subsystems exist or TLS dir is empty | Run `POST /v1/tls/sync`; check `$SNAP_COMMON/tls/leaf/` |

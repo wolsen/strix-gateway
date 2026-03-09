@@ -21,7 +21,7 @@ class TestEnsureCA:
 
         assert isinstance(key, ec.EllipticCurvePrivateKey)
         assert cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value == (
-            "Apollo Gateway Internal CA"
+            "Strix Gateway Internal CA"
         )
         assert (tmp_path / "ca.key").exists()
         assert (tmp_path / "ca.crt").exists()

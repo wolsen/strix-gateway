@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# Apollo Gateway installation + fake SPDK + SSH facade helpers.
+# Strix Gateway installation + fake SPDK + SSH facade helpers.
 # Sourced by gateway_setup.sh — runs INSIDE the gateway VM.
 #
 # Requires: common.sh sourced first
 
 GATEWAY_PORT="${GATEWAY_PORT:-8080}"
 SPDK_SOCK="${SPDK_SOCK:-/var/tmp/spdk.sock}"
-SVC_PASSWORD="${SVC_PASSWORD:-apollo_svc_pass}"
+SVC_PASSWORD="${SVC_PASSWORD:-strix_svc_pass}"
 SVC_USER="${SVC_USER:-svc}"
 
 # ---------------------------------------------------------------------------
@@ -18,11 +18,11 @@ SVC_USER="${SVC_USER:-svc}"
 
 install_fake_spdk() {
   log_info "Installing fake SPDK JSON-RPC socket at ${SPDK_SOCK}"
-  cat > /usr/local/bin/apollo-fake-spdk.py <<'PYEOF'
+  cat > /usr/local/bin/strix-fake-spdk.py <<'PYEOF'
 #!/usr/bin/env python3
 """Fake SPDK JSON-RPC socket for E2E testing.
 
-Implements the minimum set of RPCs needed by Apollo Gateway.
+Implements the minimum set of RPCs needed by Strix Gateway.
 All state lives in-memory — reset by restarting the process.
 """
 import json
@@ -254,20 +254,20 @@ def serve():
 if __name__ == "__main__":
     serve()
 PYEOF
-  chmod +x /usr/local/bin/apollo-fake-spdk.py
+  chmod +x /usr/local/bin/strix-fake-spdk.py
 }
 
 start_fake_spdk() {
   log_info "Starting fake SPDK socket"
-  pkill -f 'apollo-fake-spdk.py' >/dev/null 2>&1 || true
+  pkill -f 'strix-fake-spdk.py' >/dev/null 2>&1 || true
   sleep 0.5
   rm -f "${SPDK_SOCK}"
-  SPDK_SOCK="${SPDK_SOCK}" nohup python3 /usr/local/bin/apollo-fake-spdk.py \
-    > /var/log/apollo-fake-spdk.log 2>&1 &
+  SPDK_SOCK="${SPDK_SOCK}" nohup python3 /usr/local/bin/strix-fake-spdk.py \
+    > /var/log/strix-fake-spdk.log 2>&1 &
   sleep 1
   if [[ ! -S "${SPDK_SOCK}" ]]; then
     log_error "Fake SPDK socket not created at ${SPDK_SOCK}"
-    cat /var/log/apollo-fake-spdk.log
+    cat /var/log/strix-fake-spdk.log
     return 1
   fi
   log_info "Fake SPDK socket ready"
@@ -278,10 +278,10 @@ start_fake_spdk() {
 # ---------------------------------------------------------------------------
 
 setup_iscsi_target() {
-  local target_iqn="${1:-iqn.2026-03.com.lunacy:apollo.e2e.target}"
+  local target_iqn="${1:-iqn.2026-03.com.lunacy:strix.e2e.target}"
   local target_port="${2:-3260}"
   local lun_size_mb="${3:-512}"
-  local backing_file="/var/lib/apollo-e2e/target-lun.img"
+  local backing_file="/var/lib/strix-e2e/target-lun.img"
 
   log_info "Setting up iSCSI target: iqn=${target_iqn} port=${target_port}"
   apt-get install -y -qq targetcli-fb >/dev/null 2>&1
@@ -289,7 +289,7 @@ setup_iscsi_target() {
   modprobe target_core_mod
   modprobe iscsi_target_mod
 
-  mkdir -p /var/lib/apollo-e2e
+  mkdir -p /var/lib/strix-e2e
   truncate -s "${lun_size_mb}M" "${backing_file}"
 
   targetcli clearconfig confirm=True >/dev/null 2>&1
@@ -306,7 +306,7 @@ setup_iscsi_target() {
 }
 
 # ---------------------------------------------------------------------------
-# Apollo Gateway
+# Strix Gateway
 # ---------------------------------------------------------------------------
 
 install_gateway() {
@@ -403,7 +403,7 @@ setup_ssh_facade() {
 
   # Write sshd_config for SVC facade
   # ForceCommand ensures any SSH connection as 'svc' runs through the shell
-  cat > /etc/ssh/sshd_config.d/apollo-svc.conf <<EOF
+  cat > /etc/ssh/sshd_config.d/strix-svc.conf <<EOF
 Match User ${svc_user}
     ForceCommand ${shell_script}
     PasswordAuthentication yes

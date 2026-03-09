@@ -4,8 +4,8 @@
 
 Every SSH invocation produces one record written to two files:
 
-  /var/log/apollo/ibm_svc_cli.jsonl  — JSON Lines (machine-readable)
-  /var/log/apollo/ibm_svc_cli.log    — human-readable text
+  /var/log/strix/ibm_svc_cli.jsonl  — JSON Lines (machine-readable)
+  /var/log/strix/ibm_svc_cli.log    — human-readable text
 
 Records are also emitted at DEBUG level on the diagnostic logger
 ``"strix_gateway.personalities.svc"`` so they appear in container stdout
@@ -247,7 +247,7 @@ class SvcAuditLogger:
     Usage::
 
         audit = SvcAuditLogger()
-        audit.configure()           # uses /var/log/apollo by default
+        audit.configure()           # uses /var/log/strix by default
         audit.emit(record)
 
     In tests, pass a ``tmp_path``::
@@ -258,7 +258,7 @@ class SvcAuditLogger:
     logger degrades gracefully: it logs a diagnostic warning and skips writes.
     """
 
-    LOG_DIR_DEFAULT: Path = Path("/var/log/apollo")
+    LOG_DIR_DEFAULT: Path = Path("/var/log/strix")
     JSONL_NAME: str = "ibm_svc_cli.jsonl"
     TEXT_NAME: str = "ibm_svc_cli.log"
 

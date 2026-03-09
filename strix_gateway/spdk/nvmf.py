@@ -51,8 +51,8 @@ def subsystem_exists(client: SPDKClient, nqn: str) -> bool:
 def create_subsystem(
     client: SPDKClient,
     nqn: str,
-    model_number: str = "Apollo Gateway",
-    serial_number: str = "APOLLO0001",
+    model_number: str = "Strix Gateway",
+    serial_number: str = "STRIX0001",
 ) -> None:
     """Create an NVMe-oF subsystem that allows any host."""
     logger.info("Creating NVMe-oF subsystem %s (model=%s)", nqn, model_number)

@@ -97,7 +97,7 @@ curl http://localhost:8080/healthz
 snap run strix-gateway.ibm-svc-shell --help
 
 # CLI compatibility command exposed by the snap
-snap run strix-gateway.apollo --help
+snap run strix-gateway.strix --help
 ```
 
 ### Development Only: Local CLI Install (uv/pip)

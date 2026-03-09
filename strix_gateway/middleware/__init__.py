@@ -1,3 +1,3 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""ASGI middleware for Apollo Gateway."""
+"""ASGI middleware for Strix Gateway."""

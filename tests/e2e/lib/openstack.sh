@@ -191,7 +191,7 @@ configure_cinder_backend() {
   local backend_conf_file="$1"
   local gateway_ip="${2:-127.0.0.1}"
   local gateway_ssh_port="${3:-22}"
-  local svc_password="${4:-apollo_svc_pass}"
+  local svc_password="${4:-strix_svc_pass}"
 
   log_info "Configuring Cinder with backend from ${backend_conf_file}"
 

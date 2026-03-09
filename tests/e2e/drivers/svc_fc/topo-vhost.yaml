@@ -1,4 +1,4 @@
-# Apollo Gateway topology: SVC FC E2E test (vhost mode)
+# Strix Gateway topology: SVC FC E2E test (vhost mode)
 arrays:
   - name: svc-a
     vendor: ibm_svc

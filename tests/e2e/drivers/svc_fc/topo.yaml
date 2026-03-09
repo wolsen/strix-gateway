@@ -1,4 +1,4 @@
-# Apollo Gateway topology: SVC FC E2E test (non-vhost)
+# Strix Gateway topology: SVC FC E2E test (non-vhost)
 #
 # FC persona endpoint + iSCSI underlay endpoint.
 # The SVC FC driver calls lsportfc to discover target WWPNs and

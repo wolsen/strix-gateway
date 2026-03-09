@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Apollo Gateway FastAPI application entrypoint."""
+"""Strix Gateway FastAPI application entrypoint."""
 
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ async def _ensure_default_array(session_factory) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    logger.info("Apollo Gateway starting — initialising database")
+    logger.info("Strix Gateway starting — initialising database")
     await init_db(settings.database_url)
 
     logger.info("Ensuring default array")
@@ -104,14 +104,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             pass
 
-    logger.info("Apollo Gateway ready")
+    logger.info("Strix Gateway ready")
     yield
 
-    logger.info("Apollo Gateway shutting down")
+    logger.info("Strix Gateway shutting down")
 
 
 app = FastAPI(
-    title="Apollo Gateway",
+    title="Strix Gateway",
     description="Virtual Storage Device control-plane by Lunacy Systems",
     version="0.2.0",
     lifespan=lifespan,

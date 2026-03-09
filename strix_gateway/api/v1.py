@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Apollo Gateway v1 REST API routes.
+"""Strix Gateway v1 REST API routes.
 
 v0.3 — Routes delegate to canonical core services.  No inline DB queries
 or SPDK calls remain in this module.

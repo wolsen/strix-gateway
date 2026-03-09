@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lxd/vm_consumer_test.sh
 #
-# Runs inside the consumer LXD VM.  Drives the Apollo Gateway REST API to
+# Runs inside the consumer LXD VM.  Drives the Strix Gateway REST API to
 # create arrays, disk-backed pools, volumes, host registrations, and mappings,
 # then connects via iSCSI and NVMeoF to perform real block I/O validation.
 #
@@ -34,7 +34,7 @@ ISCSI_PORT="${ISCSI_PORT:-3260}"
 NVMEOF_PORT="${NVMEOF_PORT:-4420}"
 
 API="http://${GATEWAY_IP}:8080"
-MOUNT_DIR="/mnt/apollo-test"
+MOUNT_DIR="/mnt/strix-test"
 FS_TYPE="ext4"
 
 # Accumulated resource IDs for cleanup

@@ -55,7 +55,7 @@ GENERIC_PROFILE = CapabilityProfile(
     supports_nvmeof_tcp=True,
     supports_snapshots=True,
     supports_clones=True,
-    model="Apollo-Generic",
+    model="Strix-Generic",
     version="1.0.0",
 )
 

@@ -56,7 +56,7 @@ class TestAssertFeatureEnabled:
 class TestMergeProfile:
     def test_generic_persona_defaults(self):
         profile = get_persona_defaults("generic")
-        assert profile.model == "Apollo-Generic"
+        assert profile.model == "Strix-Generic"
 
     def test_ibm_svc_persona_defaults(self):
         profile = get_persona_defaults("ibm_svc")
@@ -65,7 +65,7 @@ class TestMergeProfile:
 
     def test_unknown_persona_falls_back_to_generic(self):
         profile = get_persona_defaults("does_not_exist")
-        assert profile.model == "Apollo-Generic"
+        assert profile.model == "Strix-Generic"
 
     def test_merge_overrides_scalar_model(self):
         profile = merge_profile("ibm_svc", {"model": "FlashSystem-5200"})
@@ -81,7 +81,7 @@ class TestMergeProfile:
 
     def test_merge_with_no_overrides(self):
         profile = merge_profile("generic", None)
-        assert profile.model == "Apollo-Generic"
+        assert profile.model == "Strix-Generic"
 
     def test_merge_with_empty_overrides(self):
         profile = merge_profile("ibm_svc", {})

@@ -37,7 +37,7 @@ DRIVER_NAME="${DRIVER_NAME:?DRIVER_NAME required}"
 VOLUME_TYPE="${VOLUME_TYPE:?VOLUME_TYPE required}"
 GATEWAY_IP="${GATEWAY_IP:?GATEWAY_IP required}"
 GATEWAY_PORT="${GATEWAY_PORT:-8080}"
-TARGET_IQN="${TARGET_IQN:-iqn.2026-03.com.lunacy:apollo.e2e.target}"
+TARGET_IQN="${TARGET_IQN:-iqn.2026-03.com.lunacy:strix.e2e.target}"
 FC_TARGET_WWPN="${FC_TARGET_WWPN:-0x500a09c0ffe1aa01}"
 ENABLE_FC="${ENABLE_FC:-false}"
 
@@ -322,7 +322,7 @@ import json, subprocess, sys
 import paramiko
 client = paramiko.SSHClient()
 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-client.connect('${GATEWAY_IP}', port=22, username='svc', password='${SVC_PASSWORD:-apollo_svc_pass}')
+client.connect('${GATEWAY_IP}', port=22, username='svc', password='${SVC_PASSWORD:-strix_svc_pass}')
 stdin, stdout, stderr = client.exec_command('svcinfo lsportfc')
 print(stdout.read().decode())
 client.close()

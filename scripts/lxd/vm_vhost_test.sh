@@ -27,9 +27,9 @@ pass() { echo "[$(ts)] [VHOST][PASS] $*"; }
 
 GATEWAY_IP="${GATEWAY_IP:?GATEWAY_IP required}"
 HTTPS_PORT=443
-CA_CERT="/tmp/apollo-ca.crt"
+CA_CERT="/tmp/strix-ca.crt"
 VHOST_DOMAIN="test.local"
-VHOST_HOSTNAME="apollo-gw"
+VHOST_HOSTNAME="strix-gw"
 FAILURES=0
 
 assert_http() {

@@ -100,7 +100,7 @@ def _feature(ctx: SvcContext, name: str, default: bool = False) -> bool:
 
 
 def _volume_status(status: str) -> str:
-    """Map Apollo VolumeStatus → IBM SVC online/offline."""
+    """Map Strix VolumeStatus → IBM SVC online/offline."""
     return "online" if status in (
         VolumeStatus.available,
         VolumeStatus.in_use,
