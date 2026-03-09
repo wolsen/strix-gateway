@@ -4,4 +4,6 @@
 **/*.pyc
 *.snap
 strix_gateway.db
+apollo_gateway.db
+.artifacts/
 .vscode/
