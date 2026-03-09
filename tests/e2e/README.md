@@ -1,7 +1,7 @@
-# E2E Tests — Apollo Gateway
+# E2E Tests — Strix Gateway
 
 End-to-end tests that spin up LXD VMs, deploy a minimal Keystone + Cinder
-stack, and exercise Cinder volume lifecycle through the Apollo Gateway using
+stack, and exercise Cinder volume lifecycle through the Strix Gateway using
 real storage driver paths (SVC iSCSI, SVC FC, etc.) in both **vhost** and
 **non-vhost** modes.
 
@@ -22,7 +22,7 @@ real storage driver paths (SVC iSCSI, SVC FC, etc.) in both **vhost** and
 │                   └─ Cinder-driven volume lifecycle   │
 ├──────────────────────────────────────────────────────┤
 │  Gateway VM (e2e-gw-*)                               │
-│    ├─ Apollo Gateway (FastAPI)                       │
+│    ├─ Strix Gateway (FastAPI)                       │
 │    ├─ Fake SPDK JSON-RPC socket                      │
 │    ├─ targetcli-fb iSCSI target                      │
 │    ├─ SVC SSH facade (ForceCommand)                  │
@@ -33,8 +33,8 @@ real storage driver paths (SVC iSCSI, SVC FC, etc.) in both **vhost** and
 │  Consumer VM (e2e-con-*)                             │
 │    ├─ open-iscsi / iscsid                            │
 │    ├─ os-brick (iSCSI + FC connectors)               │
-│    ├─ apollo_fc.ko + dm_apollo_fc.ko (FC scenarios)  │
-│    ├─ apollo-fcctl agent (FC scenarios)               │
+│    ├─ strix_fc.ko + dm_strix_fc.ko (FC scenarios)  │
+│    ├─ strix-fcctl agent (FC scenarios)               │
 │    └─ openstackclient + cinderclient                 │
 └──────────────────────────────────────────────────────┘
 ```
@@ -44,16 +44,16 @@ real storage driver paths (SVC iSCSI, SVC FC, etc.) in both **vhost** and
 - Linux host with **LXD** installed (`snap install lxd && lxd init --auto`)
 - Both repos checked out side by side:
   ```
-  lunacy-systems/
-  ├── apollo-gateway/    # this repo
-  └── apollo-fc/         # optional — needed only for FC scenarios
+  strix-systems/
+  ├── strix-gateway/    # this repo
+  └── strix-fc/         # optional — needed only for FC scenarios
   ```
 - Host connectivity to LXD VMs (default LXD bridge)
 
 ## Quick Start
 
 ```bash
-cd apollo-gateway/tests/e2e
+cd strix-gateway/tests/e2e
 
 # Run all scenarios
 ./run_all.sh
@@ -86,9 +86,9 @@ cd apollo-gateway/tests/e2e
 | `DESTROY_ON_SUCCESS` | `0` | Destroy VMs after all pass |
 | `SCENARIOS_FILTER` | `""` | Regex to select scenarios |
 | `LXD_IMAGE` | `ubuntu:24.04` | LXD image for VMs |
-| `GATEWAY_ROOT` | auto-detected | Path to apollo-gateway repo |
-| `FC_ROOT` | auto-detected | Path to apollo-fc repo |
-| `SVC_PASSWORD` | `apollo_svc_pass` | SSH password for SVC facade |
+| `GATEWAY_ROOT` | auto-detected | Path to strix-gateway repo |
+| `FC_ROOT` | auto-detected | Path to strix-fc repo |
+| `SVC_PASSWORD` | `strix_svc_pass` | SSH password for SVC facade |
 | `GATEWAY_PORT` | `8080` | Gateway HTTP listen port |
 
 ## Scenario Matrix
@@ -162,13 +162,13 @@ tests/e2e/
    <name>    vhost       <true|false>
    ```
 
-3. If the driver requires a new personality in Apollo Gateway, implement it in
-   `apollo_gateway/compat/` and ensure the topology YAML references it.
+3. If the driver requires a new personality in Strix Gateway, implement it in
+   `strix_gateway/compat/` and ensure the topology YAML references it.
 
 ## Adding a New Personality
 
-1. Implement the personality in `apollo_gateway/compat/<vendor>/`
-2. Register it in `apollo_gateway/core/personas.py`
+1. Implement the personality in `strix_gateway/compat/<vendor>/`
+2. Register it in `strix_gateway/core/personas.py`
 3. Create driver configs under `drivers/<vendor>_<transport>/`
 4. The existing test flow (`test_flow.sh`) is driver-agnostic — it uses
    `openstack` CLI for volume lifecycle and `os-brick` for data-path verification

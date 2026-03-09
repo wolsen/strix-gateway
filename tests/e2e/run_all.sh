@@ -17,14 +17,30 @@
 #   DESTROY_ON_SUCCESS=1  - destroy VMs even on success (default: keep)
 #   SCENARIOS_FILTER=...  - regex to select subset of scenarios
 #   LXD_IMAGE=...         - LXD image (default: ubuntu:24.04)
-#   GATEWAY_ROOT=...      - path to apollo-gateway repo (auto-detected)
-#   FC_ROOT=...           - path to apollo-fc repo (auto-detected)
+#   GATEWAY_ROOT=...      - path to strix-gateway repo (auto-detected)
+#   FC_ROOT=...           - path to strix-fc repo (auto-detected)
 set -euo pipefail
 
 E2E_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "${E2E_ROOT}/lib/common.sh"
 source "${E2E_ROOT}/lib/lxd.sh"
+
+MATRIX_FILE="${E2E_ROOT}/scenarios/matrix.env"
+declare -a SCENARIO_ENTRIES=()
+
+if [[ -f "${MATRIX_FILE}" ]]; then
+  source "${MATRIX_FILE}"
+fi
+
+if declare -p SCENARIOS >/dev/null 2>&1; then
+  SCENARIO_ENTRIES=("${SCENARIOS[@]}")
+else
+  while IFS= read -r line; do
+    [[ -z "${line}" || "${line}" == "#"* ]] && continue
+    SCENARIO_ENTRIES+=("${line}")
+  done < "${MATRIX_FILE}"
+fi
 
 # ── Argument parsing ────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -42,17 +58,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Path discovery ──────────────────────────────────────────────────────────
-# The E2E dir lives inside apollo-gateway. Walk up to find the repo root.
+# The E2E dir lives inside strix-gateway. Walk up to find the repo root.
 GATEWAY_ROOT="${GATEWAY_ROOT:-$(cd "${E2E_ROOT}/../.." && pwd)}"
-FC_ROOT="${FC_ROOT:-$(cd "${GATEWAY_ROOT}/../apollo-fc" 2>/dev/null && pwd || echo "")}"
+FC_ROOT="${FC_ROOT:-$(cd "${GATEWAY_ROOT}/../strix-fc" 2>/dev/null && pwd || echo "")}"
 
 if [[ ! -f "${GATEWAY_ROOT}/pyproject.toml" ]]; then
-  log_error "Cannot locate apollo-gateway repo (expected at ${GATEWAY_ROOT})"
+  log_error "Cannot locate strix-gateway repo (expected at ${GATEWAY_ROOT})"
   exit 1
 fi
 
-log_info "apollo-gateway : ${GATEWAY_ROOT}"
-log_info "apollo-fc      : ${FC_ROOT:-<not found>}"
+log_info "strix-gateway : ${GATEWAY_ROOT}"
+log_info "strix-fc     : ${FC_ROOT:-<not found>}"
 
 # ── VM names ────────────────────────────────────────────────────────────────
 GATEWAY_VM="e2e-gw-$$"
@@ -113,7 +129,9 @@ push_file "${CONSUMER_VM}" "${E2E_ROOT}/vm/test_flow.sh" "/root/e2e-vm/test_flow
 # ── Determine if any FC scenario is selected ────────────────────────────────
 _matrix_needs_fc() {
   local filter="${SCENARIOS_FILTER:-}"
-  while IFS=' ' read -r driver mode enable_fc; do
+  local entry driver mode enable_fc
+  for entry in "${SCENARIO_ENTRIES[@]}"; do
+    read -r driver mode enable_fc <<< "${entry}"
     [[ -z "${driver}" || "${driver}" == "#"* ]] && continue
     if [[ -n "${filter}" ]] && ! echo "${driver}/${mode}" | grep -qE "${filter}"; then
       continue
@@ -121,7 +139,7 @@ _matrix_needs_fc() {
     if [[ "${enable_fc}" == "true" ]]; then
       return 0
     fi
-  done < "${E2E_ROOT}/scenarios/matrix.env"
+  done
   return 1
 }
 
@@ -153,7 +171,8 @@ PASS=0
 FAIL=0
 SKIP=0
 
-while IFS=' ' read -r driver mode enable_fc; do
+for entry in "${SCENARIO_ENTRIES[@]}"; do
+  read -r driver mode enable_fc <<< "${entry}"
   [[ -z "${driver}" || "${driver}" == "#"* ]] && continue
 
   scenario_tag="${driver}/${mode}"
@@ -168,7 +187,7 @@ while IFS=' ' read -r driver mode enable_fc; do
 
   # FC requirement check
   if [[ "${enable_fc}" == "true" ]] && [[ -z "${FC_ROOT}" ]]; then
-    log_info "SKIP (no apollo-fc): ${scenario_tag}"
+    log_info "SKIP (no strix-fc): ${scenario_tag}"
     RESULTS+=("SKIP  ${scenario_tag}")
     ((SKIP++)) || true
     continue
@@ -198,7 +217,7 @@ while IFS=' ' read -r driver mode enable_fc; do
     # Collect logs
     log_info "Collecting gateway logs …"
     vm_exec "${GATEWAY_VM}" bash -c "
-      journalctl -u apollo-gateway --no-pager -n 100 2>/dev/null || true
+      journalctl -u strix-gateway --no-pager -n 100 2>/dev/null || true
       cat /var/log/cinder/cinder-all.log 2>/dev/null | tail -200 || true
     " || true
     log_info "Collecting consumer logs …"
@@ -207,7 +226,7 @@ while IFS=' ' read -r driver mode enable_fc; do
     " || true
   fi
 
-done < "${E2E_ROOT}/scenarios/matrix.env"
+done
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 log_step "Results Summary"

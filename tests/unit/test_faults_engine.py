@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-import apollo_gateway.core.faults as engine
-from apollo_gateway.core.faults import FaultInjectionError
+import strix_gateway.core.faults as engine
+from strix_gateway.core.faults import FaultInjectionError
 
 
 def _reset():

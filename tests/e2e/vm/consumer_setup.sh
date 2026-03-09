@@ -6,7 +6,7 @@
 # Runs INSIDE the consumer VM. Installs:
 #   1. iSCSI initiator + os-brick
 #   2. OpenStack CLI + Cinder client
-#   3. FC kernel modules + apollo-fcctl (if ENABLE_FC=true)
+#   3. FC kernel modules + strix-fcctl (if ENABLE_FC=true)
 #
 # After this script completes, the consumer VM is ready to run scenarios.
 #
@@ -31,7 +31,7 @@ install_consumer_deps
 log_step "Phase 2: FC modules (if enabled)"
 # ---------------------------------------------------------------------------
 if [[ "${ENABLE_FC}" == "true" ]]; then
-  install_fc_modules /root/apollo-fc
+  install_fc_modules /root/strix-fc
 fi
 
 # ---------------------------------------------------------------------------

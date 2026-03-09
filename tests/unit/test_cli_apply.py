@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from apollo_gateway.cli.errors import APIError, ValidationError
-from apollo_gateway.cli.topo.apply import apply_topology, smoke_test
-from apollo_gateway.cli.topo.models import TopologyFile
+from strix_gateway.cli.errors import APIError, ValidationError
+from strix_gateway.cli.topo.apply import apply_topology, smoke_test
+from strix_gateway.cli.topo.models import TopologyFile
 
 
 def _make_topo() -> TopologyFile:

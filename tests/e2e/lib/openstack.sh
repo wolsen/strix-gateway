@@ -30,17 +30,20 @@ install_keystone() {
 
   apt-get update -qq
   apt-get install -y -qq \
-    python3-dev python3-pip python3-venv \
+     python3-dev python3-venv \
     libffi-dev libssl-dev pkg-config \
     rabbitmq-server >/dev/null 2>&1
 
+  ensure_uv
+
   # Use a shared venv for all OpenStack services
   if [[ ! -d /opt/openstack/.venv ]]; then
-    python3 -m venv /opt/openstack/.venv
-    /opt/openstack/.venv/bin/pip install --upgrade pip setuptools wheel >/dev/null
+     uv venv /opt/openstack/.venv >/dev/null 2>&1
   fi
 
-  /opt/openstack/.venv/bin/pip install \
+    uv pip install --python /opt/openstack/.venv/bin/python \
+    'cryptography<46' \
+    'pyOpenSSL>=24.2.1' \
     keystone \
     python-openstackclient \
     uwsgi \
@@ -54,7 +57,7 @@ log_file = /var/log/keystone/keystone.log
 use_stderr = false
 
 [database]
-connection = sqlite:///${KEYSTONE_DB}
+connection = sqlite:///${KEYSTONE_DB}?timeout=60
 
 [token]
 provider = fernet
@@ -80,23 +83,18 @@ EOF
     --bootstrap-region-id "${OS_REGION}"
 
   log_info "Starting Keystone via uwsgi on port ${KEYSTONE_PORT}"
-  local wsgi_path
-  wsgi_path="$(/opt/openstack/.venv/bin/python -c \
-    "import keystone.server.wsgi; import os; print(os.path.dirname(keystone.server.wsgi.__file__))")/wsgi.py"
+  local wsgi_wrapper="/opt/openstack/keystone-public.wsgi"
+  cat > "${wsgi_wrapper}" <<'EOF'
+from keystone.server.wsgi import initialize_public_application
 
-  # keystone-wsgi-public is the standard entrypoint
-  local wsgi_bin
-  wsgi_bin="$(/opt/openstack/.venv/bin/which keystone-wsgi-public 2>/dev/null || echo "")"
-  if [[ -z "${wsgi_bin}" ]]; then
-    # Fallback: use the module directly
-    wsgi_bin="${wsgi_path}"
-  fi
+application = initialize_public_application()
+EOF
 
   nohup /opt/openstack/.venv/bin/uwsgi \
     --http "0.0.0.0:${KEYSTONE_PORT}" \
-    --wsgi-file "${wsgi_bin}" \
-    --processes 2 \
-    --threads 2 \
+    --wsgi-file "${wsgi_wrapper}" \
+    --processes 1 \
+    --threads 1 \
     --master \
     --die-on-term \
     > /var/log/keystone/uwsgi.log 2>&1 &
@@ -147,20 +145,25 @@ register_cinder_service() {
   export_openrc
   local osc="/opt/openstack/.venv/bin/openstack"
 
-  # Create cinder service user
-  ${osc} user create --domain default --password "${OS_PASSWORD}" cinder >/dev/null 2>&1 || true
-  ${osc} role add --project service --user cinder admin 2>/dev/null || true
+  if ! ${osc} project show service >/dev/null 2>&1; then
+    ${osc} project create --domain default service >/dev/null
+  fi
 
-  # Create service project if it doesn't exist
-  ${osc} project create --domain default service >/dev/null 2>&1 || true
-  ${osc} role add --project service --user cinder admin 2>/dev/null || true
+  if ! ${osc} user show cinder >/dev/null 2>&1; then
+    ${osc} user create --domain default --password "${OS_PASSWORD}" cinder >/dev/null
+  fi
 
-  # Register the volumev3 service
-  ${osc} service create --name cinderv3 --description "OpenStack Block Storage" volumev3 >/dev/null 2>&1 || true
+  if ! ${osc} service show cinderv3 >/dev/null 2>&1; then
+    ${osc} service create --name cinderv3 --description "OpenStack Block Storage" volumev3 >/dev/null
+  fi
+
+  ${osc} role add --project service --user cinder admin >/dev/null 2>&1 || true
 
   for iface in public internal admin; do
-    ${osc} endpoint create --region "${OS_REGION}" volumev3 ${iface} \
-      "${cinder_url}/%(project_id)s" >/dev/null 2>&1 || true
+    if ! ${osc} endpoint list --service cinderv3 --interface "${iface}" -f value -c ID | grep -q .; then
+      ${osc} endpoint create --region "${OS_REGION}" volumev3 "${iface}" \
+        "${cinder_url}/%(project_id)s" >/dev/null
+    fi
   done
 
   log_info "Cinder service registered"
@@ -173,7 +176,9 @@ register_cinder_service() {
 install_cinder() {
   log_step "Installing Cinder"
 
-  /opt/openstack/.venv/bin/pip install \
+  ensure_uv
+
+    uv pip install --python /opt/openstack/.venv/bin/python \
     cinder \
     python-cinderclient >/dev/null 2>&1
 
@@ -203,6 +208,7 @@ enabled_backends = ${backend_name}
 auth_strategy = keystone
 state_path = /var/lib/cinder
 my_ip = 127.0.0.1
+api_paste_config = /opt/openstack/.venv/etc/cinder/api-paste.ini
 
 [database]
 connection = sqlite:///${CINDER_DB}
@@ -237,28 +243,41 @@ start_cinder() {
   log_info "Running cinder-manage db sync"
   /opt/openstack/.venv/bin/cinder-manage db sync >/dev/null 2>&1
 
-  # Kill existing cinder-all if running
-  pkill -f 'cinder-all' >/dev/null 2>&1 || true
+  # Kill any previously running Cinder services.
+  pkill -f '[c]inder-(all|api|scheduler|volume)' >/dev/null 2>&1 || true
   sleep 1
 
-  log_info "Starting cinder-all (background)"
-  nohup /opt/openstack/.venv/bin/cinder-all \
-    --config-file "${CINDER_CONF}" \
-    > /var/log/cinder/cinder-all.log 2>&1 &
+  if [[ -x /opt/openstack/.venv/bin/cinder-all ]]; then
+    log_info "Starting cinder-all (background)"
+    nohup /opt/openstack/.venv/bin/cinder-all \
+      --config-file "${CINDER_CONF}" \
+      > /var/log/cinder/cinder-all.log 2>&1 &
+  else
+    log_info "Starting cinder-api + cinder-scheduler + cinder-volume"
+    nohup /opt/openstack/.venv/bin/cinder-api \
+      --config-file "${CINDER_CONF}" \
+      > /var/log/cinder/cinder-api.log 2>&1 &
+    nohup /opt/openstack/.venv/bin/cinder-scheduler \
+      --config-file "${CINDER_CONF}" \
+      > /var/log/cinder/cinder-scheduler.log 2>&1 &
+    nohup /opt/openstack/.venv/bin/cinder-volume \
+      --config-file "${CINDER_CONF}" \
+      > /var/log/cinder/cinder-volume.log 2>&1 &
+  fi
 
-  wait_for_http "http://127.0.0.1:${CINDER_PORT}" 120 "Cinder API"
+  wait_for_port "127.0.0.1" "${CINDER_PORT}" 120 "Cinder API"
   log_info "Cinder API ready on port ${CINDER_PORT}"
 }
 
 restart_cinder() {
-  pkill -f 'cinder-all' >/dev/null 2>&1 || true
+  pkill -f '[c]inder-(all|api|scheduler|volume)' >/dev/null 2>&1 || true
   sleep 2
   start_cinder
 }
 
 reset_cinder_state() {
   log_info "Resetting Cinder state (wipe DB + re-sync)"
-  pkill -f 'cinder-all' >/dev/null 2>&1 || true
+  pkill -f '[c]inder-(all|api|scheduler|volume)' >/dev/null 2>&1 || true
   sleep 1
   rm -f "${CINDER_DB}"
   /opt/openstack/.venv/bin/cinder-manage db sync >/dev/null 2>&1

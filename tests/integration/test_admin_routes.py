@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
-import apollo_gateway.core.faults as fault_engine
+import strix_gateway.core.faults as fault_engine
 
 pytestmark = pytest.mark.asyncio
 

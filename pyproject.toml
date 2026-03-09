@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "apollo-gateway"
+name = "strix-gateway"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-apollo = "apollo_gateway.cli.main:cli"
+strix = "strix_gateway.cli.main:cli"
 
 [tool.uv]
 dev-dependencies = [
@@ -33,7 +33,7 @@ dev-dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["apollo_gateway"]
+packages = ["strix_gateway"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -41,7 +41,7 @@ testpaths = ["tests"]
 filterwarnings = ["ignore::pytest.PytestUnhandledThreadExceptionWarning"]
 
 [tool.coverage.run]
-source = ["apollo_gateway"]
+source = ["strix_gateway"]
 branch = true
 concurrency = ["greenlet", "thread"]
 

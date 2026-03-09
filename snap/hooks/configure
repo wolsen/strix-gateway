@@ -1,26 +1,26 @@
 #!/bin/bash
 # snap/hooks/configure
 #
-# Runs whenever `snap set apollo-gateway key=value` is called.
+# Runs whenever `snap set strix-gateway key=value` is called.
 # Reads operator-supplied config values via snapctl, writes them to
 # $SNAP_DATA/config/apollo.env, then restarts the gateway service so the
 # new settings take effect.
 #
-# Supported keys and their APOLLO_* environment variable equivalents:
-#   iscsi-portal-ip         → APOLLO_ISCSI_PORTAL_IP
-#   iscsi-portal-port       → APOLLO_ISCSI_PORTAL_PORT
-#   nvmef-portal-ip         → APOLLO_NVMEF_PORTAL_IP
-#   nvmef-portal-port       → APOLLO_NVMEF_PORTAL_PORT
-#   iqn-prefix              → APOLLO_IQN_PREFIX
-#   nqn-prefix              → APOLLO_NQN_PREFIX
-#   vhost-enabled           → APOLLO_VHOST_ENABLED
-#   vhost-domain            → APOLLO_VHOST_DOMAIN
-#   vhost-hostname-override → APOLLO_VHOST_HOSTNAME_OVERRIDE
-#   vhost-require-match     → APOLLO_VHOST_REQUIRE_MATCH
-#   tls-mode                → APOLLO_TLS_MODE
-#   tls-rotate-before-days  → APOLLO_TLS_ROTATE_BEFORE_DAYS
-#   bind-https-port         → APOLLO_BIND_HTTPS_PORT
-#   bind-http-port          → APOLLO_BIND_HTTP_PORT
+# Supported keys and their STRIX_* environment variable equivalents:
+#   iscsi-portal-ip         → STRIX_ISCSI_PORTAL_IP
+#   iscsi-portal-port       → STRIX_ISCSI_PORTAL_PORT
+#   nvmef-portal-ip         → STRIX_NVMEF_PORTAL_IP
+#   nvmef-portal-port       → STRIX_NVMEF_PORTAL_PORT
+#   iqn-prefix              → STRIX_IQN_PREFIX
+#   nqn-prefix              → STRIX_NQN_PREFIX
+#   vhost-enabled           → STRIX_VHOST_ENABLED
+#   vhost-domain            → STRIX_VHOST_DOMAIN
+#   vhost-hostname-override → STRIX_VHOST_HOSTNAME_OVERRIDE
+#   vhost-require-match     → STRIX_VHOST_REQUIRE_MATCH
+#   tls-mode                → STRIX_TLS_MODE
+#   tls-rotate-before-days  → STRIX_TLS_ROTATE_BEFORE_DAYS
+#   bind-https-port         → STRIX_BIND_HTTPS_PORT
+#   bind-http-port          → STRIX_BIND_HTTP_PORT
 
 set -euo pipefail
 
@@ -30,7 +30,7 @@ env_file="${SNAP_DATA}/config/apollo.env"
 
 # Build the env file from currently-set snap config keys.
 # Only write lines for keys that have been explicitly set by the operator;
-# unset keys fall back to defaults in apollo-gateway-wrapper.
+# unset keys fall back to defaults in strix-gateway-wrapper.
 {
   for key in \
       iscsi-portal-ip \
@@ -51,7 +51,7 @@ env_file="${SNAP_DATA}/config/apollo.env"
     val=$(snapctl get "${key}" 2>/dev/null || true)
     if [ -n "${val}" ]; then
       # Convert dash-separated key to UPPER_SNAKE_CASE env var name.
-      env_key="APOLLO_$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
+      env_key="STRIX_$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
       echo "${env_key}=${val}"
     fi
   done
@@ -59,4 +59,4 @@ env_file="${SNAP_DATA}/config/apollo.env"
 
 # Restart the gateway to pick up the new environment.
 # spdk-tgt does not need a restart for portal config changes.
-snapctl restart apollo-gateway.apollo-gateway 2>/dev/null || true
+snapctl restart strix-gateway.strix-gateway 2>/dev/null || true

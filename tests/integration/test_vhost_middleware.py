@@ -14,17 +14,17 @@ import pytest_asyncio
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 
-from apollo_gateway.core.db import Array, init_db, get_session_factory
-from apollo_gateway.main import _ensure_default_array
-from apollo_gateway.middleware.vhost import VhostMiddleware
-from apollo_gateway.tls.vhost import VhostRegistry
+from strix_gateway.core.db import Array, init_db, get_session_factory
+from strix_gateway.main import _ensure_default_array
+from strix_gateway.middleware.vhost import VhostMiddleware
+from strix_gateway.tls.vhost import VhostRegistry
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
 def _build_app(*, require_match: bool = True) -> FastAPI:
     """Build a minimal FastAPI app with vhost middleware for testing."""
-    from apollo_gateway.api import vhost as vhost_api
+    from strix_gateway.api import vhost as vhost_api
 
     test_app = FastAPI()
     test_app.add_middleware(VhostMiddleware, require_match=require_match)
@@ -182,7 +182,7 @@ class TestVhostApiEndpoints:
 
     async def test_list_vhosts_when_disabled(self):
         """When no registry is on app.state, return vhost_enabled=False."""
-        from apollo_gateway.api import vhost as vhost_api
+        from strix_gateway.api import vhost as vhost_api
 
         test_app = FastAPI()
         test_app.include_router(vhost_api.router)
@@ -197,7 +197,7 @@ class TestVhostApiEndpoints:
 
     async def test_tls_ca_returns_404_when_disabled(self):
         """GET /v1/tls/ca returns 404 when TLS is not enabled."""
-        from apollo_gateway.api import vhost as vhost_api
+        from strix_gateway.api import vhost as vhost_api
 
         test_app = FastAPI()
         test_app.include_router(vhost_api.router)

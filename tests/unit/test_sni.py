@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from apollo_gateway.tls.manager import TLSManager
-from apollo_gateway.tls.sni import SNIRouter
+from strix_gateway.tls.manager import TLSManager
+from strix_gateway.tls.sni import SNIRouter
 
 
 @pytest.fixture

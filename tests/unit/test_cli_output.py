@@ -8,7 +8,7 @@ import json
 
 import yaml
 
-from apollo_gateway.cli.output import OutputFormat, render
+from strix_gateway.cli.output import OutputFormat, render
 
 
 def _capture(capsys, data, fmt, columns=None):

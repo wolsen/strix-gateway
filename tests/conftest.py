@@ -11,8 +11,8 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from apollo_gateway.core.db import Base, init_db, get_session_factory
-from apollo_gateway.main import app, _ensure_default_array
+from strix_gateway.core.db import Base, init_db, get_session_factory
+from strix_gateway.main import app, _ensure_default_array
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

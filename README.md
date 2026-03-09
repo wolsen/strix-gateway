@@ -1,8 +1,8 @@
-# Apollo Gateway
+# Strix Gateway
 
-**Virtual Storage Device control-plane by Lunacy Systems**
+**Virtual Storage Device control-plane**
 
-Apollo Gateway provisions volumes backed by [SPDK](https://spdk.io/) and exports
+Strix Gateway provisions volumes backed by [SPDK](https://spdk.io/) and exports
 them over iSCSI and NVMe-oF TCP. It is intended for OpenStack Cinder driver
 functional testing, not full vendor feature parity.
 
@@ -36,70 +36,72 @@ functional testing, not full vendor feature parity.
 
 - Python 3.11+
 - [uv](https://github.com/astral-sh/uv) (recommended) or pip
-- Docker + Docker Compose (for SPDK integration)
 
 ### Install dependencies
 
 ```bash
-# With uv (recommended)
+# With uv
 uv sync
-
-# Or with pip in a venv
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
 ```
 
 ### Run tests (no SPDK required)
 
 ```bash
 # Run all 133 tests
-pytest
+uv run pytest
 
 # Run with coverage report
-pytest --cov=apollo_gateway --cov-report=term-missing --cov-branch
+uv run pytest --cov=strix_gateway --cov-report=term-missing --cov-branch
 
 # Run only unit tests
-pytest tests/unit/
+uv run pytest tests/unit/
 
 # Run only integration tests
-pytest tests/integration/
+uv run pytest tests/integration/
 ```
 
-### Start with Docker Compose (full SPDK integration)
+### Snap install and run
 
 ```bash
-docker compose up --build
+# Build the snap
+snapcraft
+
+# Install locally for testing
+sudo snap install --dangerous ./strix-gateway_*.snap
+
+# Run the daemon command
+strix-gateway
+
+# Check health
+curl http://localhost:8080/healthz
 ```
 
-This starts:
-- **spdk_tgt** — SPDK target daemon (privileged, needs hugepages)
-- **apollo_gateway** — The REST API on port 8080
+The snap bundles runtime dependencies and is the preferred deployment artifact.
 
 ### Start standalone (development)
 
 ```bash
 # Set environment variables
-export APOLLO_SPDK_SOCKET_PATH=/var/tmp/spdk.sock
-export APOLLO_DATABASE_URL=sqlite+aiosqlite:///./apollo_gateway.db
+export STRIX_SPDK_SOCKET_PATH=/var/tmp/spdk.sock
+export STRIX_DATABASE_URL=sqlite+aiosqlite:///./strix_gateway.db
 
-uvicorn apollo_gateway.main:app --host 0.0.0.0 --port 8080 --reload
+uvicorn strix_gateway.main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
 ## Configuration
 
-All settings are controlled via environment variables with the `APOLLO_` prefix:
+All settings are controlled via environment variables with the `STRIX_` prefix:
 
 | Variable | Default | Description |
 |---|---|---|
-| `APOLLO_DATABASE_URL` | `sqlite+aiosqlite:///./apollo_gateway.db` | SQLAlchemy async DB URL |
-| `APOLLO_SPDK_SOCKET_PATH` | `/var/tmp/spdk.sock` | SPDK JSON-RPC Unix socket |
-| `APOLLO_ISCSI_PORTAL_IP` | `0.0.0.0` | iSCSI portal listen address |
-| `APOLLO_ISCSI_PORTAL_PORT` | `3260` | iSCSI portal port |
-| `APOLLO_NVMEF_PORTAL_IP` | `0.0.0.0` | NVMe-oF TCP listen address |
-| `APOLLO_NVMEF_PORTAL_PORT` | `4420` | NVMe-oF TCP port |
-| `APOLLO_IQN_PREFIX` | `iqn.2026-02.lunacysystems.apollo` | iSCSI IQN prefix |
-| `APOLLO_NQN_PREFIX` | `nqn.2026-02.io.lunacysystems:apollo` | NVMe NQN prefix |
+| `STRIX_DATABASE_URL` | `sqlite+aiosqlite:///./strix_gateway.db` | SQLAlchemy async DB URL |
+| `STRIX_SPDK_SOCKET_PATH` | `/var/tmp/spdk.sock` | SPDK JSON-RPC Unix socket |
+| `STRIX_ISCSI_PORTAL_IP` | `0.0.0.0` | iSCSI portal listen address |
+| `STRIX_ISCSI_PORTAL_PORT` | `3260` | iSCSI portal port |
+| `STRIX_NVMEF_PORTAL_IP` | `0.0.0.0` | NVMe-oF TCP listen address |
+| `STRIX_NVMEF_PORTAL_PORT` | `4420` | NVMe-oF TCP port |
+| `STRIX_IQN_PREFIX` | `iqn.2026-02.strix.strix` | iSCSI IQN prefix |
+| `STRIX_NQN_PREFIX` | `nqn.2026-02.io.strix:strix` | NVMe NQN prefix |
 
 ## REST API Reference
 
@@ -191,7 +193,7 @@ curl -X DELETE http://localhost:8080/v1/mappings/<MAPPING_ID>
 {
   "driver_volume_type": "iscsi",
   "data": {
-    "target_iqn": "iqn.2026-02.lunacysystems.apollo:<export_id>",
+    "target_iqn": "iqn.2026-02.strix.strix:<export_id>",
     "target_portal": "0.0.0.0:3260",
     "target_lun": 0,
     "access_mode": "rw",
@@ -205,7 +207,7 @@ curl -X DELETE http://localhost:8080/v1/mappings/<MAPPING_ID>
 {
   "driver_volume_type": "nvmeof",
   "data": {
-    "target_nqn": "nqn.2026-02.io.lunacysystems:apollo:<export_id>",
+    "target_nqn": "nqn.2026-02.io.strix:strix:<export_id>",
     "transport_type": "tcp",
     "target_portal": "0.0.0.0:4420",
     "ns_id": 1,
@@ -271,9 +273,9 @@ ls -la /var/tmp/spdk.sock
 ### Test with malloc (in-memory) Pool
 
 ```bash
-# 1. Start Apollo Gateway
-export APOLLO_SPDK_SOCKET_PATH=/var/tmp/spdk.sock
-uvicorn apollo_gateway.main:app --host 0.0.0.0 --port 8080
+# 1. Start Strix Gateway
+export STRIX_SPDK_SOCKET_PATH=/var/tmp/spdk.sock
+uvicorn strix_gateway.main:app --host 0.0.0.0 --port 8080
 
 # 2. Create a malloc pool (4GB)
 POOL=$(curl -s -X POST http://localhost:8080/v1/pools \
@@ -319,12 +321,12 @@ curl -X DELETE http://localhost:8080/v1/volumes/$VOL_ID
 
 ```bash
 # 1. Create a backing file (4GB)
-dd if=/dev/zero of=/tmp/apollo-pool.img bs=1M count=4096
+dd if=/dev/zero of=/tmp/strix-pool.img bs=1M count=4096
 
 # 2. Create an aio_file pool
 POOL=$(curl -s -X POST http://localhost:8080/v1/pools \
   -H "Content-Type: application/json" \
-  -d '{"name": "file-pool", "backend_type": "aio_file", "aio_path": "/tmp/apollo-pool.img"}')
+  -d '{"name": "file-pool", "backend_type": "aio_file", "aio_path": "/tmp/strix-pool.img"}')
 POOL_ID=$(echo $POOL | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
 # 3. Create volume and map via NVMe-oF TCP
@@ -351,35 +353,15 @@ curl -s http://localhost:8080/v1/mappings/$NVME_MAP_ID/connection-info | python3
 # sudo nvme connect -t tcp -n <NQN> -a <IP> -s 4420
 ```
 
-### Docker Compose Testing
-
-```bash
-# Start everything
-docker compose up --build -d
-
-# Wait for SPDK to initialize (may need hugepages configured on host)
-sleep 5
-
-# Run the same curl commands against localhost:8080
-curl http://localhost:8080/healthz
-
-# View logs
-docker compose logs -f apollo_gateway
-docker compose logs -f spdk_tgt
-
-# Teardown
-docker compose down -v
-```
-
 ## SPDK Naming Conventions
 
 | Resource | Naming Format |
 |---|---|
 | lvol store | `{pool.name}` |
-| Backing bdev | `apollo-pool-{pool_uuid}` |
-| lvol bdev | `{pool.name}/apollo-vol-{volume_uuid}` |
-| iSCSI target IQN | `iqn.2026-02.lunacysystems.apollo:{export_container_id}` |
-| NVMe subsystem NQN | `nqn.2026-02.io.lunacysystems:apollo:{export_container_id}` |
+| Backing bdev | `strix-pool-{pool_uuid}` |
+| lvol bdev | `{pool.name}/strix-vol-{volume_uuid}` |
+| iSCSI target IQN | `iqn.2026-02.strix.strix:{export_container_id}` |
+| NVMe subsystem NQN | `nqn.2026-02.io.strix:strix:{export_container_id}` |
 
 ## Volume Status Transitions
 
@@ -400,7 +382,7 @@ available → deleting → (deleted)
 ## Project Structure
 
 ```
-apollo_gateway/
+strix_gateway/
 ├── __init__.py          # Package version
 ├── main.py              # FastAPI app entrypoint + lifespan
 ├── config.py            # Pydantic settings (env-based)
@@ -419,8 +401,9 @@ apollo_gateway/
 │       ├── load.py      # YAML / TOML loader
 │       ├── validate.py  # Cross-reference validation
 │       └── apply.py     # Idempotent apply + smoke test
-├── compat/
-│   └── ibm_svc/         # IBM SVC SSH façade
+├── personalities/
+│   ├── generic/         # Generic storage personality
+│   └── svc/             # IBM SVC personality + SSH façade runtime
 ├── core/
 │   ├── models.py        # Pydantic request/response schemas
 │   ├── db.py            # SQLAlchemy 2.x async ORM models
@@ -441,33 +424,33 @@ apollo_gateway/
 
 ---
 
-## Apollo CLI
+## Strix CLI
 
-The `apollo` command-line tool is a human-facing thin client for the Apollo
+The `strix` command-line tool is a human-facing thin client for the Strix
 Gateway REST API. It does **not** call SPDK directly.
 
 ### Installation
 
 ```bash
 # Install the full package (includes CLI)
-uv sync          # or: pip install -e .
+uv sync
 
 # Verify
-apollo --help
+strix --help
 ```
 
 ### Configuration
 
 ```bash
 # Set the API URL (default: http://localhost:8080)
-export APOLLO_URL=http://localhost:8080
+export STRIX_URL=http://localhost:8080
 ```
 
 Global flags available on every command:
 
 | Flag | Default | Description |
 |---|---|---|
-| `--url URL` | `$APOLLO_URL` / `http://localhost:8080` | API base URL |
+| `--url URL` | `$STRIX_URL` / `http://localhost:8080` | API base URL |
 | `--output table\|json\|yaml` | `table` | Output format |
 | `--quiet` / `--verbose` | off | Control verbosity |
 | `--timeout SECONDS` | `30` | HTTP timeout |
@@ -480,87 +463,87 @@ Exit codes: `0` success, `1` validation error, `2` API error, `3` unexpected.
 
 ```bash
 # Show all subsystems with pool/volume/mapping counts
-apollo status
+strix status
 
 # Filter to one subsystem
-apollo status --subsystem svc-a
+strix status --subsystem svc-a
 ```
 
 #### Subsystems
 
 ```bash
-apollo subsystem ls
-apollo subsystem show svc-a
-apollo subsystem create svc-a --persona ibm_svc --protocol iscsi
-apollo subsystem rm svc-a --force
-apollo subsystem capabilities svc-a
-apollo subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml --merge
+strix subsystem ls
+strix subsystem show svc-a
+strix subsystem create svc-a --persona ibm_svc --protocol iscsi
+strix subsystem rm svc-a --force
+strix subsystem capabilities svc-a
+strix subsystem set-capabilities svc-a -f examples/capabilities/ibm_svc_basic.yaml --merge
 ```
 
 #### Pools
 
 ```bash
-apollo pool ls --subsystem svc-a
-apollo pool create gold --subsystem svc-a --backend malloc --size-gb 500
-apollo pool show gold --subsystem svc-a
-apollo pool rm gold --subsystem svc-a
+strix pool ls --subsystem svc-a
+strix pool create gold --subsystem svc-a --backend malloc --size-gb 500
+strix pool show gold --subsystem svc-a
+strix pool rm gold --subsystem svc-a
 ```
 
 #### Volumes
 
 ```bash
-apollo volume ls --subsystem svc-a
-apollo volume create vol-001 --pool gold --size-gb 20 --subsystem svc-a
-apollo volume show vol-001 --subsystem svc-a
-apollo volume extend vol-001 --subsystem svc-a --size-gb 40
-apollo volume rm vol-001 --subsystem svc-a
+strix volume ls --subsystem svc-a
+strix volume create vol-001 --pool gold --size-gb 20 --subsystem svc-a
+strix volume show vol-001 --subsystem svc-a
+strix volume extend vol-001 --subsystem svc-a --size-gb 40
+strix volume rm vol-001 --subsystem svc-a
 ```
 
 #### Hosts
 
 ```bash
-apollo host ls
-apollo host create compute-01
-apollo host add-initiator compute-01 --iscsi-iqn "iqn.1993-08.org.debian:01:abc123"
-apollo host show compute-01
-apollo host rm-initiator compute-01 --iscsi-iqn "iqn.1993-08.org.debian:01:abc123"
-apollo host rm compute-01
+strix host ls
+strix host create compute-01
+strix host add-initiator compute-01 --iscsi-iqn "iqn.1993-08.org.debian:01:abc123"
+strix host show compute-01
+strix host rm-initiator compute-01 --iscsi-iqn "iqn.1993-08.org.debian:01:abc123"
+strix host rm compute-01
 ```
 
 #### Mappings + Connection Info
 
 ```bash
-apollo map ls --subsystem svc-a
-apollo map create --subsystem svc-a --host compute-01 --volume vol-001 --protocol iscsi
-apollo connection-info --subsystem svc-a --host compute-01 --volume vol-001
-apollo map rm --subsystem svc-a --host compute-01 --volume vol-001
+strix map ls --subsystem svc-a
+strix map create --subsystem svc-a --host compute-01 --volume vol-001 --protocol iscsi
+strix connection-info --subsystem svc-a --host compute-01 --volume vol-001
+strix map rm --subsystem svc-a --host compute-01 --volume vol-001
 ```
 
 #### Topology / CI Workflows
 
 ```bash
 # Validate a topology file
-apollo validate -f examples/ci/topo-min.yaml
+strix validate -f examples/ci/topo-min.yaml
 
 # Apply idempotently (create missing resources)
-apollo apply -f examples/ci/topo-min.yaml
+strix apply -f examples/ci/topo-min.yaml
 
 # Apply with strict mode (report live resources not in file)
-apollo apply -f examples/ci/topo-multi-subsystem.yaml --strict
+strix apply -f examples/ci/topo-multi-subsystem.yaml --strict
 
 # Smoke test (validate + check all resources exist + connection-info)
-apollo smoke -f examples/ci/topo-min.yaml
+strix smoke -f examples/ci/topo-min.yaml
 ```
 
 #### IBM SVC Façade Debug
 
 ```bash
-# Run SVC commands locally via the in-process façade
-apollo svc run --subsystem svc-a "svcinfo lssystem"
-apollo svc run --subsystem svc-a "svcinfo lsmdiskgrp -delim :"
-apollo svc run --subsystem svc-a "svctask mkvdisk -name testvol -mdiskgrp gold -size 10 -unit gb"
+# Run SVC commands through SSH ForceCommand (which forwards to /v1/svc/run)
+ssh svc@<gateway-host> "svcinfo lssystem"
+ssh svc@<gateway-host> "svcinfo lsmdiskgrp -delim :"
+ssh svc@<gateway-host> "svctask mkvdisk -name testvol -mdiskgrp gold -size 10 -unit gb"
 ```
 
 ## License
 
-Proprietary — Lunacy Systems
+GPL-3.0-only (GNU General Public License v3.0 only)

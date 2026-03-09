@@ -93,6 +93,22 @@ wait_for_port() {
   done
 }
 
+ensure_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log_info "Installing uv"
+  apt-get install -y -qq curl ca-certificates >/dev/null 2>&1
+  curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
+  export PATH="${HOME}/.local/bin:${PATH}"
+
+  if ! command -v uv >/dev/null 2>&1; then
+    log_error "uv installation failed"
+    return 1
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Data validation
 # ---------------------------------------------------------------------------

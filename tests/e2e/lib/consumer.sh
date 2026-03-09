@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# Consumer VM helpers — os-brick, iSCSI initiator, apollo-fc modules.
+# Consumer VM helpers — os-brick, iSCSI initiator, strix-fc modules.
 # Sourced by consumer_setup.sh — runs INSIDE the consumer VM.
 #
 # Requires: common.sh sourced first
@@ -18,20 +18,21 @@ install_consumer_deps() {
 
   apt-get update -qq
   apt-get install -y -qq \
-    python3-dev python3-pip python3-venv \
+    python3-dev python3-venv \
     open-iscsi \
     libffi-dev libssl-dev \
     jq curl >/dev/null 2>&1
+
+  ensure_uv
 
   # iSCSI initiator daemon
   systemctl enable --now iscsid 2>/dev/null || true
 
   if [[ ! -d /opt/consumer/.venv ]]; then
-    python3 -m venv /opt/consumer/.venv
-    /opt/consumer/.venv/bin/pip install --upgrade pip setuptools wheel >/dev/null
+    uv venv /opt/consumer/.venv >/dev/null 2>&1
   fi
 
-  /opt/consumer/.venv/bin/pip install \
+  uv pip install --python /opt/consumer/.venv/bin/python \
     os-brick \
     python-openstackclient \
     python-cinderclient >/dev/null 2>&1
@@ -44,7 +45,8 @@ install_consumer_deps() {
 # ---------------------------------------------------------------------------
 
 install_fc_modules() {
-  local fc_root="${1:-/root/apollo-fc}"
+  local fc_root="${1:-/root/strix-fc}"
+  local insmod_err=""
 
   if [[ "${ENABLE_FC}" != "true" ]]; then
     log_info "Skipping FC module build (ENABLE_FC != true)"
@@ -57,30 +59,41 @@ install_fc_modules() {
     build-essential \
     "linux-headers-$(uname -r)" >/dev/null 2>&1
 
-  cd "${fc_root}/src/apollo_fc"
+  cd "${fc_root}/src/strix_fc"
   make clean >/dev/null 2>&1 || true
   make >/dev/null 2>&1
 
-  cd "${fc_root}/src/dm_apollo_fc"
+  cd "${fc_root}/src/dm_strix_fc"
   make clean >/dev/null 2>&1 || true
   make >/dev/null 2>&1
 
-  log_info "Loading apollo_fc + dm_apollo_fc"
-  insmod "${fc_root}/src/apollo_fc/apollo_fc.ko"
-  insmod "${fc_root}/src/dm_apollo_fc/dm_apollo_fc.ko"
+  # strix_fc depends on FC transport symbols provided by scsi_transport_fc.
+  modprobe scsi_transport_fc >/dev/null 2>&1 || true
 
-  log_info "Installing apollo-fcctl"
-  cd "${fc_root}/userspace"
-  /opt/consumer/.venv/bin/pip install -e . >/dev/null 2>&1
+  log_info "Loading strix_fc + dm_strix_fc"
+  if ! lsmod | awk '{print $1}' | grep -qx 'strix_fc'; then
+    if ! insmod_err="$(insmod "${fc_root}/src/strix_fc/strix_fc.ko" 2>&1)"; then
+      printf '%s\n' "${insmod_err}" >&2
+      return 1
+    fi
+  fi
 
-  log_info "FC modules loaded and apollo-fcctl installed"
+  if ! lsmod | awk '{print $1}' | grep -qx 'dm_strix_fc'; then
+    insmod "${fc_root}/src/dm_strix_fc/dm_strix_fc.ko"
+  fi
+
+  log_info "Installing strix-fcctl"
+  cd "${fc_root}"
+  uv pip install --python /opt/consumer/.venv/bin/python -e . >/dev/null 2>&1
+
+  log_info "FC modules loaded and strix-fcctl installed"
 }
 
 unload_fc_modules() {
-  local fc_root="${1:-/root/apollo-fc}"
+  local fc_root="${1:-/root/strix-fc}"
   log_info "Unloading FC modules"
-  rmmod dm_apollo_fc 2>/dev/null || true
-  rmmod apollo_fc 2>/dev/null || true
+  rmmod dm_strix_fc 2>/dev/null || true
+  rmmod strix_fc 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -92,7 +105,7 @@ get_iscsi_iqn() {
 }
 
 get_fc_wwpns() {
-  # From apollo_fc virtual HBA sysfs
+  # From strix_fc virtual HBA sysfs
   local host_num
   host_num="$(get_fc_host_num)"
   if [[ -n "${host_num}" ]]; then
@@ -105,7 +118,7 @@ get_fc_host_num() {
     if [[ -f "${host_dir}/proc_name" ]]; then
       local proc_name
       proc_name="$(cat "${host_dir}/proc_name")"
-      if [[ "${proc_name}" == "apollo_fc" ]]; then
+      if [[ "${proc_name}" == "strix_fc" ]]; then
         basename "${host_dir}" | sed 's/host//'
         return
       fi

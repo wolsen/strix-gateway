@@ -7,8 +7,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
-import apollo_gateway.core.faults as fault_engine
-from apollo_gateway.spdk.rpc import SPDKError
+import strix_gateway.core.faults as fault_engine
+from strix_gateway.spdk.rpc import SPDKError
 
 pytestmark = pytest.mark.asyncio
 
@@ -363,7 +363,7 @@ async def test_delete_volume_without_bdev_name(client: AsyncClient, mock_spdk):
     # We'll need to find it via the pool's volumes. Let's create a working volume first
     # to confirm the pool works, then check. Actually, the error volume was committed
     # to DB, let's use sqlalchemy to find it.
-    from apollo_gateway.core.db import get_session_factory, Volume
+    from strix_gateway.core.db import get_session_factory, Volume
     from sqlalchemy import select
     factory = get_session_factory()
     async with factory() as session:

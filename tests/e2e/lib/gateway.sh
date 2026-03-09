@@ -310,69 +310,70 @@ setup_iscsi_target() {
 # ---------------------------------------------------------------------------
 
 install_gateway() {
-  local gateway_root="${1:-/root/apollo-gateway}"
-  log_info "Installing Apollo Gateway from ${gateway_root}"
+  local gateway_root="${1:-/root/strix-gateway}"
+    log_info "Installing Strix Gateway from ${gateway_root}"
+
+    ensure_uv
 
   cd "${gateway_root}"
-  rm -f apollo_gateway.db
+  rm -f strix_gateway.db
 
-  python3 -m venv .venv
-  .venv/bin/python -m pip install --upgrade pip >/dev/null
-  .venv/bin/python -m pip install -e . >/dev/null 2>&1
+    uv venv --clear .venv >/dev/null 2>&1
+    uv pip install --python .venv/bin/python -e . >/dev/null 2>&1
 
-  log_info "Apollo Gateway installed"
+    log_info "Strix Gateway installed"
 }
 
 start_gateway() {
-  local gateway_root="${1:-/root/apollo-gateway}"
+  local gateway_root="${1:-/root/strix-gateway}"
   local mode="${2:-non-vhost}"
   local vhost_domain="${3:-e2e.test}"
 
-  log_info "Starting Apollo Gateway (mode=${mode}) on port ${GATEWAY_PORT}"
+    log_info "Starting Strix Gateway (mode=${mode}) on port ${GATEWAY_PORT}"
 
   cd "${gateway_root}"
 
   # Kill existing gateway
-  pkill -f 'uvicorn apollo_gateway.main:app' >/dev/null 2>&1 || true
+    pkill -f '[u]vicorn strix_gateway.main:app' >/dev/null 2>&1 || true
   sleep 1
 
   # Build env
   local gw_env=(
-    "APOLLO_SPDK_SOCKET_PATH=${SPDK_SOCK}"
-    "APOLLO_DATABASE_URL=sqlite+aiosqlite:///./apollo_gateway.db"
+    "STRIX_SPDK_SOCKET_PATH=${SPDK_SOCK}"
+    "STRIX_DATABASE_URL=sqlite+aiosqlite:///./strix_gateway.db"
   )
 
   if [[ "${mode}" == "vhost" ]]; then
     gw_env+=(
-      "APOLLO_VHOST_ENABLED=true"
-      "APOLLO_VHOST_DOMAIN=${vhost_domain}"
+      "STRIX_VHOST_ENABLED=true"
+      "STRIX_VHOST_DOMAIN=${vhost_domain}"
     )
   fi
 
-  nohup env "${gw_env[@]}" .venv/bin/uvicorn apollo_gateway.main:app \
+  nohup env "${gw_env[@]}" .venv/bin/uvicorn strix_gateway.main:app \
     --host 0.0.0.0 --port "${GATEWAY_PORT}" \
     --log-level info \
-    > /var/log/apollo-gateway.log 2>&1 &
+    > /var/log/strix-gateway.log 2>&1 &
 
   wait_for_http "http://127.0.0.1:${GATEWAY_PORT}/healthz" 60 "Gateway"
   log_info "Gateway ready"
 }
 
 reset_gateway() {
-  local gateway_root="${1:-/root/apollo-gateway}"
+  local gateway_root="${1:-/root/strix-gateway}"
   log_info "Resetting Gateway state"
-  pkill -f 'uvicorn apollo_gateway.main:app' >/dev/null 2>&1 || true
+    pkill -f '[u]vicorn strix_gateway.main:app' >/dev/null 2>&1 || true
   sleep 1
-  rm -f "${gateway_root}/apollo_gateway.db"
+  rm -f "${gateway_root}/strix_gateway.db"
 }
 
 apply_topology() {
-  local gateway_root="${1:-/root/apollo-gateway}"
+  local gateway_root="${1:-/root/strix-gateway}"
   local topo_file="$2"
 
   log_info "Applying topology from ${topo_file}"
   cd "${gateway_root}"
-  .venv/bin/apollo apply -f "${topo_file}" --url "http://127.0.0.1:${GATEWAY_PORT}"
+    .venv/bin/strix --url "http://127.0.0.1:${GATEWAY_PORT}" apply -f "${topo_file}"
 }
 
 # ---------------------------------------------------------------------------
@@ -393,8 +394,12 @@ setup_ssh_facade() {
   echo "${svc_user}:${svc_pass}" | chpasswd
 
   # Determine path to the shell module
-  local gateway_root="${1:-/root/apollo-gateway}"
-    local shell_script="${gateway_root}/.venv/bin/python -m apollo_gateway.personalities.svc.shell"
+  local gateway_root="${1:-/root/strix-gateway}"
+    local shell_script="${gateway_root}/.venv/bin/python -m strix_gateway.personalities.svc.shell"
+
+    # E2E runs gateway from /root; allow the unprivileged svc user to traverse
+    # the path so ForceCommand can execute the shell module.
+    chmod o+rx /root "${gateway_root}" "${gateway_root}/.venv" "${gateway_root}/.venv/bin" 2>/dev/null || true
 
   # Write sshd_config for SVC facade
   # ForceCommand ensures any SSH connection as 'svc' runs through the shell

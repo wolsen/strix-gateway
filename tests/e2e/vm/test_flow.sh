@@ -287,8 +287,8 @@ print(data.get('target_lun', 0))
       log_info "Running FC agent reconcile"
       /opt/consumer/.venv/bin/python3 -c "
 import asyncio
-from apollo_fcctl.agent.reconcile import reconcile_once
-from apollo_fcctl.agent.config import AgentConfig
+from strix_fcctl.agent.reconcile import reconcile_once
+from strix_fcctl.agent.config import AgentConfig
 config = AgentConfig(
     gateway_url='http://${GATEWAY_IP}:${GATEWAY_PORT}',
     host_id='$(cat /root/host_id 2>/dev/null || echo "")',
@@ -305,11 +305,11 @@ data = json.load(sys.stdin)
 print(data.get('path', data.get('device_path', '')))
 ")
 
-      # Fallback: check /dev/apollo-fc/ for devices
+      # Fallback: check /dev/strix-fc/ for devices
       if [[ -z "${DEVICE_PATH}" || ! -b "${DEVICE_PATH}" ]]; then
-        ALT_DEV="$(ls /dev/apollo-fc/* 2>/dev/null | head -n1 || echo "")"
+        ALT_DEV="$(ls /dev/strix-fc/* 2>/dev/null | head -n1 || echo "")"
         if [[ -n "${ALT_DEV}" && -b "${ALT_DEV}" ]]; then
-          log_info "Using apollo-fc device: ${ALT_DEV}"
+          log_info "Using strix-fc device: ${ALT_DEV}"
           DEVICE_PATH="${ALT_DEV}"
         fi
       fi

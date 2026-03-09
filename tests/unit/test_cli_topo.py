@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from apollo_gateway.cli.errors import ValidationError
-from apollo_gateway.cli.topo.load import load_topology
-from apollo_gateway.cli.topo.models import TopologyFile
-from apollo_gateway.cli.topo.validate import validate_topology
+from strix_gateway.cli.errors import ValidationError
+from strix_gateway.cli.topo.load import load_topology
+from strix_gateway.cli.topo.models import TopologyFile
+from strix_gateway.cli.topo.validate import validate_topology
 
 
 # ------------------------------------------------------------------

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from apollo_gateway.cli.main import app
+from strix_gateway.cli.main import app
 
 runner = CliRunner()
 

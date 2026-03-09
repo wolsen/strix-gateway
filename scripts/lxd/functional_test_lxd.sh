@@ -3,7 +3,7 @@
 #
 # End-to-end functional test for Apollo Gateway using LXD VMs.
 #
-# Launches a gateway VM (runs the apollo-gateway snap — SPDK + FastAPI) and a
+# Launches a gateway VM (runs the strix-gateway snap — SPDK + FastAPI) and a
 # consumer VM (iSCSI + NVMeoF initiator).  The consumer drives storage
 # configuration via the REST API, then connects via iSCSI and NVMeoF to
 # validate real block I/O.  A second phase validates vhost multiplexing.
@@ -16,7 +16,7 @@
 #   ./scripts/lxd/functional_test_lxd.sh
 #
 #   # Skip snap build — use a pre-built snap:
-#   SNAP_FILE=./apollo-gateway_0.1.0_amd64.snap ./scripts/lxd/functional_test_lxd.sh
+#   SNAP_FILE=./strix-gateway_0.1.0_amd64.snap ./scripts/lxd/functional_test_lxd.sh
 #
 #   # Keep VMs after test for debugging:
 #   KEEP_VMS=1 ./scripts/lxd/functional_test_lxd.sh
@@ -100,14 +100,14 @@ require_cmd lxc
 
 if [[ -z "${SNAP_FILE}" ]]; then
   # Look for an existing snap in the repo root
-  SNAP_FILE="$(ls -1 "${REPO_ROOT}"/apollo-gateway_*.snap 2>/dev/null | head -1 || true)"
+  SNAP_FILE="$(ls -1 "${REPO_ROOT}"/strix-gateway_*.snap 2>/dev/null | head -1 || true)"
 fi
 
 if [[ -z "${SNAP_FILE}" || ! -f "${SNAP_FILE}" ]]; then
   log "No pre-built snap found — building with snapcraft"
   require_cmd snapcraft
   (cd "${REPO_ROOT}" && snapcraft)
-  SNAP_FILE="$(ls -1 "${REPO_ROOT}"/apollo-gateway_*.snap | head -1)"
+  SNAP_FILE="$(ls -1 "${REPO_ROOT}"/strix-gateway_*.snap | head -1)"
 fi
 
 if [[ ! -f "${SNAP_FILE}" ]]; then
@@ -187,13 +187,13 @@ wait_for_cloud_init "${CONSUMER_VM}"
 # ---------------------------------------------------------------------------
 
 log "Pushing snap to gateway VM"
-lxc file push "${SNAP_FILE}" "${GATEWAY_VM}/root/apollo-gateway.snap"
+lxc file push "${SNAP_FILE}" "${GATEWAY_VM}/root/strix-gateway.snap"
 
 log "Installing snap on gateway VM"
 # snap install may need to download prerequisites (snapd, core24) from the
 # store — transient network errors in LXD VMs are common.  Retry up to 3 times.
 for attempt in 1 2 3; do
-  if lxc exec "${GATEWAY_VM}" -- snap install --dangerous --devmode /root/apollo-gateway.snap; then
+  if lxc exec "${GATEWAY_VM}" -- snap install --dangerous --devmode /root/strix-gateway.snap; then
     break
   fi
   if [[ "${attempt}" -eq 3 ]]; then
@@ -205,20 +205,20 @@ for attempt in 1 2 3; do
 done
 
 log "Creating backing files for disk-backed pools"
-lxc exec "${GATEWAY_VM}" -- mkdir -p /var/snap/apollo-gateway/common/pools
-lxc exec "${GATEWAY_VM}" -- truncate -s 10G /var/snap/apollo-gateway/common/pools/pool-generic.img
-lxc exec "${GATEWAY_VM}" -- truncate -s 10G /var/snap/apollo-gateway/common/pools/pool-svc.img
+lxc exec "${GATEWAY_VM}" -- mkdir -p /var/snap/strix-gateway/common/pools
+lxc exec "${GATEWAY_VM}" -- truncate -s 10G /var/snap/strix-gateway/common/pools/pool-generic.img
+lxc exec "${GATEWAY_VM}" -- truncate -s 10G /var/snap/strix-gateway/common/pools/pool-svc.img
 
-log "Starting apollo-gateway snap services"
-lxc exec "${GATEWAY_VM}" -- snap start apollo-gateway
+log "Starting strix-gateway snap services"
+lxc exec "${GATEWAY_VM}" -- snap start strix-gateway
 
 # Wait for SPDK socket
 log "Waiting for SPDK socket"
 if ! lxc exec "${GATEWAY_VM}" -- bash -c \
-  'timeout 60 bash -c "until [ -S /var/snap/apollo-gateway/common/run/spdk.sock ]; do sleep 1; done"'
+  'timeout 60 bash -c "until [ -S /var/snap/strix-gateway/common/run/spdk.sock ]; do sleep 1; done"'
 then
   err "Timed out waiting for SPDK socket"
-  lxc exec "${GATEWAY_VM}" -- snap logs apollo-gateway.spdk-tgt -n 50 || true
+  lxc exec "${GATEWAY_VM}" -- snap logs strix-gateway.spdk-tgt -n 50 || true
   exit 1
 fi
 
@@ -228,7 +228,7 @@ if ! lxc exec "${GATEWAY_VM}" -- bash -c \
   'for i in $(seq 1 60); do curl -sf http://localhost:8080/healthz >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1'
 then
   err "Timed out waiting for gateway healthz"
-  lxc exec "${GATEWAY_VM}" -- snap logs apollo-gateway.apollo-gateway -n 50 || true
+  lxc exec "${GATEWAY_VM}" -- snap logs strix-gateway.strix-gateway -n 50 || true
   exit 1
 fi
 
@@ -252,7 +252,7 @@ fi
 
 log "Gateway VM IP: ${GATEWAY_IP}"
 
-log "Pushing apollo-gateway repository into consumer VM"
+log "Pushing strix-gateway repository into consumer VM"
 lxc file push -r "${REPO_ROOT}" "${CONSUMER_VM}/root/"
 
 log "Disabling automatic apt services on consumer VM"
@@ -342,27 +342,27 @@ log "Main functional test PASSED"
 # ---------------------------------------------------------------------------
 
 log "Stopping gateway for vhost mode reconfiguration"
-lxc exec "${GATEWAY_VM}" -- snap stop apollo-gateway.apollo-gateway
+lxc exec "${GATEWAY_VM}" -- snap stop strix-gateway.strix-gateway
 
 log "Configuring vhost mode via snap set"
 # Batch all vhost settings in a single snap set to avoid the configure hook
 # restarting the service with incomplete configuration (e.g. vhost-enabled=true
 # but vhost-domain not yet set).
-lxc exec "${GATEWAY_VM}" -- snap set apollo-gateway \
+lxc exec "${GATEWAY_VM}" -- snap set strix-gateway \
   vhost-enabled=true \
   vhost-domain=test.local \
   vhost-hostname-override=apollo-gw
 
 log "Restarting gateway in vhost mode"
 # The configure hook will have already restarted the service; ensure it is up.
-lxc exec "${GATEWAY_VM}" -- snap start apollo-gateway.apollo-gateway 2>/dev/null || true
+lxc exec "${GATEWAY_VM}" -- snap start strix-gateway.strix-gateway 2>/dev/null || true
 
 log "Waiting for gateway API (vhost mode, HTTPS port 443)"
 if ! lxc exec "${GATEWAY_VM}" -- bash -c \
   'for i in $(seq 1 60); do curl -skf https://localhost:443/healthz >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1'
 then
   err "Timed out waiting for gateway healthz in vhost mode"
-  lxc exec "${GATEWAY_VM}" -- snap logs apollo-gateway.apollo-gateway -n 50 || true
+  lxc exec "${GATEWAY_VM}" -- snap logs strix-gateway.strix-gateway -n 50 || true
   exit 1
 fi
 

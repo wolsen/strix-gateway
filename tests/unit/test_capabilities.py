@@ -14,8 +14,8 @@ import json
 import pytest
 from fastapi import HTTPException
 
-from apollo_gateway.core.capabilities import assert_feature_enabled
-from apollo_gateway.core.personas import (
+from strix_gateway.core.capabilities import assert_feature_enabled
+from strix_gateway.core.personas import (
     CapabilityProfile,
     CapabilityFeatures,
     get_persona_defaults,

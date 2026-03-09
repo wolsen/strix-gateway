@@ -20,12 +20,27 @@ create_vm() {
   local image="${2:-${LXD_IMAGE}}"
   local cpus="${3:-${VM_CPUS}}"
   local memory="${4:-${VM_MEMORY}}"
+  local launch_err
 
   log_info "Creating VM '${name}' (${image}, ${cpus} CPUs, ${memory} RAM)"
-  lxc launch "${image}" "${name}" --vm \
-    -c security.secureboot=false \
+  if ! launch_err="$(lxc launch "${image}" "${name}" --vm \
+    -c boot.mode=uefi-nosecureboot \
     -c limits.memory="${memory}" \
-    -c limits.cpu="${cpus}"
+    -c limits.cpu="${cpus}" 2>&1)"; then
+    if grep -q "boot.mode.*isn't supported" <<<"${launch_err}"; then
+      log_info "LXD does not support boot.mode for VMs; retrying with legacy security.secureboot"
+      if ! launch_err="$(lxc launch "${image}" "${name}" --vm \
+        -c security.secureboot=false \
+        -c limits.memory="${memory}" \
+        -c limits.cpu="${cpus}" 2>&1)"; then
+        printf '%s\n' "${launch_err}" >&2
+        return 1
+      fi
+    else
+      printf '%s\n' "${launch_err}" >&2
+      return 1
+    fi
+  fi
 }
 
 vm_exists() {
@@ -82,35 +97,35 @@ push_repos() {
   local gateway_root="$2"
   local fc_root="${3:-}"
 
-  local gw_archive="/tmp/e2e-apollo-gateway.tgz"
-  local fc_archive="/tmp/e2e-apollo-fc.tgz"
+  local gw_archive="/tmp/e2e-strix-gateway.tgz"
+  local fc_archive="/tmp/e2e-strix-fc.tgz"
 
-  log_info "Packaging apollo-gateway for '${vm_name}'"
+  log_info "Packaging strix-gateway for '${vm_name}'"
   tar -C "$(dirname "${gateway_root}")" \
-    --exclude='apollo-gateway/.venv' \
-    --exclude='apollo-gateway/.git' \
-    --exclude='apollo-gateway/**/__pycache__' \
-    --exclude='apollo-gateway/.pytest_cache' \
-    --exclude='apollo-gateway/build' \
-    --exclude='apollo-gateway/dist' \
+    --exclude='strix-gateway/.venv' \
+    --exclude='strix-gateway/.git' \
+    --exclude='strix-gateway/**/__pycache__' \
+    --exclude='strix-gateway/.pytest_cache' \
+    --exclude='strix-gateway/build' \
+    --exclude='strix-gateway/dist' \
     -czf "${gw_archive}" "$(basename "${gateway_root}")"
 
-  lxc file push "${gw_archive}" "${vm_name}/root/apollo-gateway.tgz"
-  lxc exec "${vm_name}" -- bash -lc "cd /root && tar -xzf apollo-gateway.tgz"
+  lxc file push "${gw_archive}" "${vm_name}/root/strix-gateway.tgz"
+  lxc exec "${vm_name}" -- bash -lc "cd /root && tar -xzf strix-gateway.tgz"
 
   if [[ -n "${fc_root}" && -d "${fc_root}" ]]; then
-    log_info "Packaging apollo-fc for '${vm_name}'"
+    log_info "Packaging strix-fc for '${vm_name}'"
     tar -C "$(dirname "${fc_root}")" \
-      --exclude='apollo-fc/.venv' \
-      --exclude='apollo-fc/.git' \
-      --exclude='apollo-fc/**/__pycache__' \
-      --exclude='apollo-fc/.pytest_cache' \
-      --exclude='apollo-fc/build' \
-      --exclude='apollo-fc/dist' \
+      --exclude='strix-fc/.venv' \
+      --exclude='strix-fc/.git' \
+      --exclude='strix-fc/**/__pycache__' \
+      --exclude='strix-fc/.pytest_cache' \
+      --exclude='strix-fc/build' \
+      --exclude='strix-fc/dist' \
       -czf "${fc_archive}" "$(basename "${fc_root}")"
 
-    lxc file push "${fc_archive}" "${vm_name}/root/apollo-fc.tgz"
-    lxc exec "${vm_name}" -- bash -lc "cd /root && tar -xzf apollo-fc.tgz"
+    lxc file push "${fc_archive}" "${vm_name}/root/strix-fc.tgz"
+    lxc exec "${vm_name}" -- bash -lc "cd /root && tar -xzf strix-fc.tgz"
     rm -f "${fc_archive}"
   fi
 

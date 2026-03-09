@@ -11,7 +11,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes, serialization
 
-from apollo_gateway.tls.manager import TLSManager
+from strix_gateway.tls.manager import TLSManager
 
 
 class TestEnsureCA:

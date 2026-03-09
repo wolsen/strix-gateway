@@ -61,9 +61,9 @@ log_step "Scenario: ${DRIVER_NAME} / ${MODE}"
 # ---------------------------------------------------------------------------
 log_info "Resetting gateway state"
 vm_exec "${GATEWAY_VM}" bash -c "
-  pkill -f 'uvicorn apollo_gateway.main:app' 2>/dev/null || true
+  pkill -f '[u]vicorn strix_gateway.main:app' 2>/dev/null || true
   sleep 1
-  rm -f /root/apollo-gateway/apollo_gateway.db
+  rm -f /root/strix-gateway/strix_gateway.db
 "
 
 # Push topo file
@@ -75,14 +75,14 @@ if [[ "${MODE}" == "vhost" ]]; then
     source /root/e2e-lib/common.sh
     source /root/e2e-lib/gateway.sh
     start_fake_spdk
-    start_gateway /root/apollo-gateway vhost ${VHOST_DOMAIN}
+    start_gateway /root/strix-gateway vhost ${VHOST_DOMAIN}
   "
 else
   vm_exec "${GATEWAY_VM}" bash -c "
     source /root/e2e-lib/common.sh
     source /root/e2e-lib/gateway.sh
     start_fake_spdk
-    start_gateway /root/apollo-gateway non-vhost
+    start_gateway /root/strix-gateway non-vhost
   "
 fi
 
@@ -91,7 +91,7 @@ log_info "Applying topology"
 vm_exec "${GATEWAY_VM}" bash -c "
   source /root/e2e-lib/common.sh
   source /root/e2e-lib/gateway.sh
-  apply_topology /root/apollo-gateway /root/topo.yaml
+  apply_topology /root/strix-gateway /root/topo.yaml
 "
 
 # ---------------------------------------------------------------------------

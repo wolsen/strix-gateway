@@ -10,9 +10,9 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from apollo_gateway.core.db import Array, init_db, get_session_factory
-from apollo_gateway.core.models import ArrayCreate
-from apollo_gateway.tls.vhost import (
+from strix_gateway.core.db import Array, init_db, get_session_factory
+from strix_gateway.core.models import ArrayCreate
+from strix_gateway.tls.vhost import (
     VhostRegistry,
     is_dns_safe,
     resolve_hostname,
@@ -29,13 +29,13 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 class TestResolveFqdn:
     def test_default_hostname(self):
-        with patch("apollo_gateway.tls.vhost.socket.gethostname", return_value="gw01"):
+        with patch("strix_gateway.tls.vhost.socket.gethostname", return_value="gw01"):
             fqdn = resolve_array_fqdn("pure-a", "lab.example")
         assert fqdn == "pure-a.gw01.lab.example"
 
     def test_hostname_with_domain_stripped(self):
         with patch(
-            "apollo_gateway.tls.vhost.socket.gethostname",
+            "strix_gateway.tls.vhost.socket.gethostname",
             return_value="gw01.internal.corp",
         ):
             fqdn = resolve_array_fqdn("svc-test", "storage.example.com")
@@ -48,7 +48,7 @@ class TestResolveFqdn:
         assert fqdn == "pure-a.node99.lab.example"
 
     def test_resolve_hostname_default(self):
-        with patch("apollo_gateway.tls.vhost.socket.gethostname", return_value="myhost"):
+        with patch("strix_gateway.tls.vhost.socket.gethostname", return_value="myhost"):
             assert resolve_hostname() == "myhost"
 
     def test_resolve_hostname_override(self):

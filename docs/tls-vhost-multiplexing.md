@@ -40,12 +40,12 @@ For example, on a host named `gw01` with domain `lab.example`:
 ### Snap
 
 ```bash
-sudo snap set apollo-gateway \
+sudo snap set strix-gateway \
     vhost-enabled=true \
     vhost-domain=lab.example
 
 # Optional overrides:
-sudo snap set apollo-gateway \
+sudo snap set strix-gateway \
     vhost-hostname-override=gw01 \
     bind-https-port=443 \
     tls-mode=per-subsystem
@@ -56,12 +56,12 @@ The gateway service restarts automatically after `snap set`.
 ### Development (non-snap)
 
 ```bash
-export APOLLO_VHOST_ENABLED=true
-export APOLLO_VHOST_DOMAIN=lab.example
-export APOLLO_TLS_DIR=./tls
-export APOLLO_BIND_HTTPS_PORT=8443
+export STRIX_VHOST_ENABLED=true
+export STRIX_VHOST_DOMAIN=lab.example
+export STRIX_TLS_DIR=./tls
+export STRIX_BIND_HTTPS_PORT=8443
 
-python -m apollo_gateway.server
+python -m strix_gateway.server
 ```
 
 ## TLS Modes
@@ -75,7 +75,7 @@ A separate leaf certificate is issued for each subsystem FQDN. The SNI callback 
 A single wildcard certificate is issued for `*.<hostname>.<domain>`. This is simpler but requires all clients to accept wildcard certificates.
 
 ```bash
-sudo snap set apollo-gateway tls-mode=wildcard
+sudo snap set strix-gateway tls-mode=wildcard
 ```
 
 ## Certificate Management
@@ -96,7 +96,7 @@ Leaf certificates are stored in `$SNAP_COMMON/tls/leaf/`.
 curl -k https://<any-vhost-fqdn>/v1/tls/ca > apollo-ca.crt
 
 # Via filesystem (on the gateway host)
-cat /var/snap/apollo-gateway/common/tls/ca.crt
+cat /var/snap/strix-gateway/common/tls/ca.crt
 ```
 
 ### Installing the CA in Test Environments
@@ -104,14 +104,14 @@ cat /var/snap/apollo-gateway/common/tls/ca.crt
 **Ubuntu/Debian:**
 
 ```bash
-sudo cp apollo-ca.crt /usr/local/share/ca-certificates/apollo-gateway.crt
+sudo cp apollo-ca.crt /usr/local/share/ca-certificates/strix-gateway.crt
 sudo update-ca-certificates
 ```
 
 **LXD container:**
 
 ```bash
-lxc file push apollo-ca.crt mycontainer/usr/local/share/ca-certificates/apollo-gateway.crt
+lxc file push apollo-ca.crt mycontainer/usr/local/share/ca-certificates/strix-gateway.crt
 lxc exec mycontainer -- update-ca-certificates
 ```
 
@@ -217,11 +217,11 @@ Returns the CA certificate in PEM format (`application/x-pem-file`).
 
 ```bash
 # Snap
-sudo journalctl -u snap.apollo-gateway.apollo-gateway -f
+sudo journalctl -u snap.strix-gateway.strix-gateway -f
 
 # Development
 # Logs go to stdout with the format:
-# 2026-03-01 12:00:00 INFO apollo_gateway.tls.manager — Issued leaf cert for pure-a.gw01.lab.example
+# 2026-03-01 12:00:00 INFO strix_gateway.tls.manager — Issued leaf cert for pure-a.gw01.lab.example
 ```
 
 ### Checking vhost state
@@ -231,7 +231,7 @@ sudo journalctl -u snap.apollo-gateway.apollo-gateway -f
 curl -s https://<fqdn>/v1/vhosts | python3 -m json.tool
 
 # Inspect a certificate's SANs
-openssl x509 -in /var/snap/apollo-gateway/common/tls/leaf/<fqdn>.crt -text -noout | grep DNS
+openssl x509 -in /var/snap/strix-gateway/common/tls/leaf/<fqdn>.crt -text -noout | grep DNS
 
 # Test TLS handshake
 openssl s_client -connect <ip>:443 -servername pure-a.gw01.lab.example </dev/null

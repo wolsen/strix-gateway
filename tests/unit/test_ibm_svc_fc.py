@@ -20,8 +20,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from apollo_gateway.personalities.svc.handlers import SvcContext, dispatch
-from apollo_gateway.core.db import (
+from strix_gateway.personalities.svc.handlers import SvcContext, dispatch
+from strix_gateway.core.db import (
     Array,
     Base,
     Host,
@@ -32,8 +32,8 @@ from apollo_gateway.core.db import (
     init_db,
     get_session_factory,
 )
-from apollo_gateway.core.models import Protocol, VolumeStatus
-from apollo_gateway.core.personas import merge_profile
+from strix_gateway.core.models import Protocol, VolumeStatus
+from strix_gateway.core.personas import merge_profile
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

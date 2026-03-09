@@ -4,7 +4,7 @@
 
 import pytest
 
-from apollo_gateway.spdk.ensure import allocate_lun, allocate_nsid
+from strix_gateway.spdk.ensure import allocate_lun, allocate_nsid
 
 
 class TestAllocateLun:

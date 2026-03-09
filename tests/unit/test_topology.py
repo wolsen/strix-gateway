@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from apollo_gateway.topology.schema import (
+from strix_gateway.topology.schema import (
     ArraySpec,
     EndpointSpec,
     HostSpec,
@@ -25,7 +25,7 @@ from apollo_gateway.topology.schema import (
     TopologySpec,
     VolumeSpec,
 )
-from apollo_gateway.topology.validate import validate
+from strix_gateway.topology.validate import validate
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ class TestValidate:
 
 class TestYamlLoader:
     def test_load_single_svc_example(self):
-        from apollo_gateway.topology.load import load_yaml
+        from strix_gateway.topology.load import load_yaml
         path = Path(__file__).parents[2] / "examples" / "ci" / "single_svc.yaml"
         spec = load_yaml(path)
         assert len(spec.arrays) == 1
@@ -183,7 +183,7 @@ class TestYamlLoader:
         assert validate(spec) == []
 
     def test_load_dual_array_example(self):
-        from apollo_gateway.topology.load import load_yaml
+        from strix_gateway.topology.load import load_yaml
         path = Path(__file__).parents[2] / "examples" / "ci" / "dual_subsystem.yaml"
         spec = load_yaml(path)
         assert len(spec.arrays) == 2
@@ -192,7 +192,7 @@ class TestYamlLoader:
         assert "svc-b" in names
 
     def test_load_inline_yaml(self, tmp_path):
-        from apollo_gateway.topology.load import load_yaml
+        from strix_gateway.topology.load import load_yaml
         content = textwrap.dedent("""\
             arrays:
               - name: inline-arr
@@ -218,7 +218,7 @@ class TestYamlLoader:
 
 class TestTomlLoader:
     def test_load_inline_toml(self, tmp_path):
-        from apollo_gateway.topology.load import load_toml
+        from strix_gateway.topology.load import load_toml
         content = textwrap.dedent("""\
             [[arrays]]
             name = "toml-arr"

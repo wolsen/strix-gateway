@@ -59,8 +59,8 @@ setup_iscsi_target "${TARGET_IQN}" 3260 512
 # ---------------------------------------------------------------------------
 log_step "Phase 3: Apollo Gateway"
 # ---------------------------------------------------------------------------
-install_gateway /root/apollo-gateway
-setup_ssh_facade /root/apollo-gateway
+install_gateway /root/strix-gateway
+setup_ssh_facade /root/strix-gateway
 
 # ---------------------------------------------------------------------------
 log_step "Phase 4: Keystone"

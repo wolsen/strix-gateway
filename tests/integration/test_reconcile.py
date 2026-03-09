@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from apollo_gateway.config import Settings
-from apollo_gateway.core.db import init_db, get_session_factory
-from apollo_gateway.core.reconcile import reconcile
-from apollo_gateway.spdk.rpc import SPDKClient, SPDKError
+from strix_gateway.config import Settings
+from strix_gateway.core.db import init_db, get_session_factory
+from strix_gateway.core.reconcile import reconcile
+from strix_gateway.spdk.rpc import SPDKClient, SPDKError
 
 pytestmark = pytest.mark.asyncio
 
@@ -27,7 +27,7 @@ async def session_factory():
 @pytest.fixture
 async def default_arr(session_factory):
     """Pre-existing 'default' Array required for non-nullable array_id FK."""
-    from apollo_gateway.core.db import Array
+    from strix_gateway.core.db import Array
     async with session_factory() as session:
         arr = Array(
             name="default",
@@ -81,7 +81,7 @@ async def test_reconcile_nvmef_transport_failure_is_non_fatal(session_factory, s
 
 async def test_reconcile_with_pool_and_volume(session_factory, default_arr, spdk, cfg):
     """Reconcile correctly ensures pool and volume SPDK resources."""
-    from apollo_gateway.core.db import Pool, Volume
+    from strix_gateway.core.db import Pool, Volume
 
     async with session_factory() as session:
         pool = Pool(name="rpool", backend_type="malloc", size_mb=1024,
@@ -93,11 +93,11 @@ async def test_reconcile_with_pool_and_volume(session_factory, default_arr, spdk
         session.add(vol)
         await session.commit()
 
-    with patch("apollo_gateway.core.reconcile.ensure_pool") as mock_pool, \
-         patch("apollo_gateway.core.reconcile.ensure_lvol", return_value="rpool/apollo-vol-x") as mock_lvol, \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
-         patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
+    with patch("strix_gateway.core.reconcile.ensure_pool") as mock_pool, \
+         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="rpool/apollo-vol-x") as mock_lvol, \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
+         patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)
 
     mock_pool.assert_called_once()
@@ -106,7 +106,7 @@ async def test_reconcile_with_pool_and_volume(session_factory, default_arr, spdk
 
 async def test_reconcile_volume_with_unknown_pool_is_skipped(session_factory, default_arr, spdk, cfg):
     """A volume referencing a non-existent pool should be skipped gracefully."""
-    from apollo_gateway.core.db import Volume
+    from strix_gateway.core.db import Volume
 
     async with session_factory() as session:
         vol = Volume(name="orphan", pool_id="nonexistent-pool", size_mb=512,
@@ -114,11 +114,11 @@ async def test_reconcile_volume_with_unknown_pool_is_skipped(session_factory, de
         session.add(vol)
         await session.commit()
 
-    with patch("apollo_gateway.core.reconcile.ensure_pool"), \
-         patch("apollo_gateway.core.reconcile.ensure_lvol") as mock_lvol, \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
-         patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
+    with patch("strix_gateway.core.reconcile.ensure_pool"), \
+         patch("strix_gateway.core.reconcile.ensure_lvol") as mock_lvol, \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
+         patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)
 
     mock_lvol.assert_not_called()
@@ -126,7 +126,7 @@ async def test_reconcile_volume_with_unknown_pool_is_skipped(session_factory, de
 
 async def test_reconcile_with_endpoints_and_mappings(session_factory, default_arr, spdk, cfg):
     """Reconcile calls ensure_iscsi/nvmef_export and ensure_*_mapping for each record."""
-    from apollo_gateway.core.db import TransportEndpoint, Mapping, Pool, Volume
+    from strix_gateway.core.db import TransportEndpoint, Mapping, Pool, Volume
 
     async with session_factory() as session:
         pool = Pool(name="rp2", backend_type="malloc", size_mb=512,
@@ -165,15 +165,15 @@ async def test_reconcile_with_endpoints_and_mappings(session_factory, default_ar
         session.add_all([m1, m2])
         await session.commit()
 
-    with patch("apollo_gateway.core.reconcile.ensure_pool"), \
-         patch("apollo_gateway.core.reconcile.ensure_lvol", return_value="rp2/apollo-vol-rv2"), \
-         patch("apollo_gateway.core.reconcile.ensure_iscsi_export") as mock_iscsi_exp, \
-         patch("apollo_gateway.core.reconcile.ensure_nvmef_export") as mock_nvme_exp, \
-         patch("apollo_gateway.core.reconcile.ensure_iscsi_mapping") as mock_iscsi_map, \
-         patch("apollo_gateway.core.reconcile.ensure_nvmef_mapping") as mock_nvme_map, \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
-         patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
+    with patch("strix_gateway.core.reconcile.ensure_pool"), \
+         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="rp2/apollo-vol-rv2"), \
+         patch("strix_gateway.core.reconcile.ensure_iscsi_export") as mock_iscsi_exp, \
+         patch("strix_gateway.core.reconcile.ensure_nvmef_export") as mock_nvme_exp, \
+         patch("strix_gateway.core.reconcile.ensure_iscsi_mapping") as mock_iscsi_map, \
+         patch("strix_gateway.core.reconcile.ensure_nvmef_mapping") as mock_nvme_map, \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
+         patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)
 
     mock_iscsi_exp.assert_called_once()
@@ -184,23 +184,23 @@ async def test_reconcile_with_endpoints_and_mappings(session_factory, default_ar
 
 async def test_reconcile_ensure_pool_failure_is_non_fatal(session_factory, default_arr, spdk, cfg):
     """An exception from ensure_pool should be logged, not raised."""
-    from apollo_gateway.core.db import Pool
+    from strix_gateway.core.db import Pool
 
     async with session_factory() as session:
         session.add(Pool(name="bad-pool", backend_type="malloc", size_mb=512,
                          array_id=default_arr.id))
         await session.commit()
 
-    with patch("apollo_gateway.core.reconcile.ensure_pool", side_effect=Exception("pool fail")), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
-         patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
+    with patch("strix_gateway.core.reconcile.ensure_pool", side_effect=Exception("pool fail")), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
+         patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)  # must not raise
 
 
 async def test_reconcile_ensure_lvol_failure_is_non_fatal(session_factory, default_arr, spdk, cfg):
     """An exception from ensure_lvol should be logged, not raised."""
-    from apollo_gateway.core.db import Pool, Volume
+    from strix_gateway.core.db import Pool, Volume
 
     async with session_factory() as session:
         pool = Pool(name="lf-pool", backend_type="malloc", size_mb=512,
@@ -211,17 +211,17 @@ async def test_reconcile_ensure_lvol_failure_is_non_fatal(session_factory, defau
                            status="available", array_id=default_arr.id))
         await session.commit()
 
-    with patch("apollo_gateway.core.reconcile.ensure_pool"), \
-         patch("apollo_gateway.core.reconcile.ensure_lvol", side_effect=Exception("lvol fail")), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
-         patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
+    with patch("strix_gateway.core.reconcile.ensure_pool"), \
+         patch("strix_gateway.core.reconcile.ensure_lvol", side_effect=Exception("lvol fail")), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
+         patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)
 
 
 async def test_reconcile_ensure_export_failure_is_non_fatal(session_factory, default_arr, spdk, cfg):
     """An exception from ensure_*_export should be logged, not raised."""
-    from apollo_gateway.core.db import TransportEndpoint
+    from strix_gateway.core.db import TransportEndpoint
 
     async with session_factory() as session:
         session.add(TransportEndpoint(
@@ -232,17 +232,17 @@ async def test_reconcile_ensure_export_failure_is_non_fatal(session_factory, def
         ))
         await session.commit()
 
-    with patch("apollo_gateway.core.reconcile.ensure_pool"), \
-         patch("apollo_gateway.core.reconcile.ensure_iscsi_export", side_effect=Exception("ep fail")), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
-         patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
+    with patch("strix_gateway.core.reconcile.ensure_pool"), \
+         patch("strix_gateway.core.reconcile.ensure_iscsi_export", side_effect=Exception("ep fail")), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
+         patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)
 
 
 async def test_reconcile_mapping_with_missing_volume_or_ep_is_skipped(session_factory, default_arr, spdk, cfg):
     """A mapping whose volume/ep is not in the loaded maps should be skipped."""
-    from apollo_gateway.core.db import Mapping
+    from strix_gateway.core.db import Mapping
 
     async with session_factory() as session:
         session.add(Mapping(
@@ -254,11 +254,11 @@ async def test_reconcile_mapping_with_missing_volume_or_ep_is_skipped(session_fa
         ))
         await session.commit()
 
-    with patch("apollo_gateway.core.reconcile.ensure_pool"), \
-         patch("apollo_gateway.core.reconcile.ensure_iscsi_mapping") as mock_map, \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
-         patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
+    with patch("strix_gateway.core.reconcile.ensure_pool"), \
+         patch("strix_gateway.core.reconcile.ensure_iscsi_mapping") as mock_map, \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
+         patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)
 
     mock_map.assert_not_called()
@@ -266,7 +266,7 @@ async def test_reconcile_mapping_with_missing_volume_or_ep_is_skipped(session_fa
 
 async def test_reconcile_ensure_mapping_failure_is_non_fatal(session_factory, default_arr, spdk, cfg):
     """An exception from ensure_*_mapping should be logged, not raised."""
-    from apollo_gateway.core.db import TransportEndpoint, Mapping, Pool, Volume
+    from strix_gateway.core.db import TransportEndpoint, Mapping, Pool, Volume
 
     async with session_factory() as session:
         pool = Pool(name="mf-pool", backend_type="malloc", size_mb=512,
@@ -295,11 +295,11 @@ async def test_reconcile_ensure_mapping_failure_is_non_fatal(session_factory, de
         ))
         await session.commit()
 
-    with patch("apollo_gateway.core.reconcile.ensure_pool"), \
-         patch("apollo_gateway.core.reconcile.ensure_lvol", return_value="mf-pool/apollo-vol-x"), \
-         patch("apollo_gateway.core.reconcile.ensure_iscsi_export"), \
-         patch("apollo_gateway.core.reconcile.ensure_iscsi_mapping", side_effect=Exception("map fail")), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
-         patch("apollo_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
-         patch("apollo_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
+    with patch("strix_gateway.core.reconcile.ensure_pool"), \
+         patch("strix_gateway.core.reconcile.ensure_lvol", return_value="mf-pool/apollo-vol-x"), \
+         patch("strix_gateway.core.reconcile.ensure_iscsi_export"), \
+         patch("strix_gateway.core.reconcile.ensure_iscsi_mapping", side_effect=Exception("map fail")), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_portal_group"), \
+         patch("strix_gateway.core.reconcile.iscsi_rpc.ensure_initiator_group"), \
+         patch("strix_gateway.core.reconcile.nvmf_rpc.ensure_transport"):
         await reconcile(spdk, session_factory, cfg)

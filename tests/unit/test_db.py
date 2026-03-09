@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-import apollo_gateway.core.db as db_module
+import strix_gateway.core.db as db_module
 
 
 def test_get_session_factory_before_init_raises():

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apollo_gateway.spdk.rpc import SPDKClient, SPDKError
+from strix_gateway.spdk.rpc import SPDKClient, SPDKError
 
 
 def _sock_mock(response: dict) -> MagicMock:
@@ -24,7 +24,7 @@ def _sock_mock(response: dict) -> MagicMock:
 
 
 def _patch_socket(sock_mock):
-    return patch("apollo_gateway.spdk.rpc.socket.socket", return_value=sock_mock)
+    return patch("strix_gateway.spdk.rpc.socket.socket", return_value=sock_mock)
 
 
 class TestSPDKError:
@@ -116,7 +116,7 @@ class TestSPDKClientCall:
 
         client = SPDKClient("/tmp/spdk.sock")
 
-        with patch("apollo_gateway.spdk.rpc.socket.socket", side_effect=[sock1, sock2]):
+        with patch("strix_gateway.spdk.rpc.socket.socket", side_effect=[sock1, sock2]):
             sock1.recv.side_effect = [make_response(1), b""]
             client.call("first")
             sock2.recv.side_effect = [make_response(2), b""]

@@ -210,7 +210,7 @@ log "Phase C: Creating disk-backed pools (10GB each)"
 GENERIC_POOL_RESP="$(api_post "/v1/pools" '{
   "name": "disk-pool",
   "backend_type": "aio_file",
-  "aio_path": "/var/snap/apollo-gateway/common/pools/pool-generic.img"
+  "aio_path": "/var/snap/strix-gateway/common/pools/pool-generic.img"
 }')"
 GENERIC_POOL_ID="$(echo "${GENERIC_POOL_RESP}" | jq -r '.id')"
 log "  Created pool disk-pool (id=${GENERIC_POOL_ID}) under default array"
@@ -218,7 +218,7 @@ log "  Created pool disk-pool (id=${GENERIC_POOL_ID}) under default array"
 SVC_POOL_RESP="$(api_post "/v1/pools" '{
   "name": "svc-disk-pool",
   "backend_type": "aio_file",
-  "aio_path": "/var/snap/apollo-gateway/common/pools/pool-svc.img"
+  "aio_path": "/var/snap/strix-gateway/common/pools/pool-svc.img"
 }')"
 SVC_POOL_ID="$(echo "${SVC_POOL_RESP}" | jq -r '.id')"
 log "  Created pool svc-disk-pool (id=${SVC_POOL_ID}) under default array"

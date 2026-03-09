@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Unit tests for apollo_gateway.personalities.svc.audit and shell audit integration.
+"""Unit tests for strix_gateway.personalities.svc.audit and shell audit integration.
 
 Coverage
 --------
@@ -27,7 +27,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from apollo_gateway.personalities.svc.audit import (
+from strix_gateway.personalities.svc.audit import (
     SENSITIVE_FLAGS,
     InvocationRecord,
     SvcAuditLogger,
@@ -36,10 +36,10 @@ from apollo_gateway.personalities.svc.audit import (
     parse_ssh_connection,
     redact_argv,
 )
-from apollo_gateway.personalities.svc.audit import audited_dispatch
-from apollo_gateway.personalities.svc.handlers import SvcContext
-from apollo_gateway.core.db import Pool, Array, init_db, get_session_factory
-from apollo_gateway.core.personas import merge_profile
+from strix_gateway.personalities.svc.audit import audited_dispatch
+from strix_gateway.personalities.svc.handlers import SvcContext
+from strix_gateway.core.db import Pool, Array, init_db, get_session_factory
+from strix_gateway.core.personas import merge_profile
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

@@ -85,13 +85,13 @@ It is NOT intended to:
 Each vendor has its own isolated module:
 
 ```
-apollo_gateway/compat/<vendor>/
+strix_gateway/compat/<vendor>/
 ```
 
 Example:
 
 ```
-apollo_gateway/compat/
+strix_gateway/compat/
   ibm_svc/
   pure/
   hpe3par/
@@ -299,7 +299,7 @@ IBM SVC façade must additionally log:
 All logs must use logger namespace:
 
 ```
-apollo_gateway.compat.<vendor>
+strix_gateway.compat.<vendor>
 ```
 
 ---

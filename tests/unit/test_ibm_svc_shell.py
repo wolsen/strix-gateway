@@ -5,7 +5,7 @@
 These tests:
   - Set up an in-memory SQLite database.
   - Use a mock SPDKClient (returns None for all calls, which is safe for all
-    ensure_* idempotent functions in apollo_gateway.spdk.ensure).
+    ensure_* idempotent functions in strix_gateway.spdk.ensure).
   - Call ``dispatch(cmd, ctx)`` directly, bypassing SSH / OS environment.
   - Assert that DB state is mutated correctly and that stdout output matches
     the IBM SVC wire format expected by Cinder drivers.
@@ -36,8 +36,8 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from apollo_gateway.personalities.svc.handlers import SvcContext, dispatch
-from apollo_gateway.core.db import (
+from strix_gateway.personalities.svc.handlers import SvcContext, dispatch
+from strix_gateway.core.db import (
     Base,
     Host,
     Mapping,
@@ -47,8 +47,8 @@ from apollo_gateway.core.db import (
     init_db,
     get_session_factory,
 )
-from apollo_gateway.core.models import VolumeStatus
-from apollo_gateway.core.personas import merge_profile
+from strix_gateway.core.models import VolumeStatus
+from strix_gateway.core.personas import merge_profile
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

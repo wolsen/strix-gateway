@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Canonical, Ltd.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Unit tests for apollo_gateway.personalities.svc.parse."""
+"""Unit tests for strix_gateway.personalities.svc.parse."""
 
 from __future__ import annotations
 
 import pytest
 
-from apollo_gateway.personalities.svc.errors import SvcInvalidArgError, SvcUnknownCommandError
-from apollo_gateway.personalities.svc.parse import (
+from strix_gateway.personalities.svc.errors import SvcInvalidArgError, SvcUnknownCommandError
+from strix_gateway.personalities.svc.parse import (
     ParsedCommand,
     parse_ssh_command,
     require_flag,

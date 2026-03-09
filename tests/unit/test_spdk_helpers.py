@@ -8,10 +8,10 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from apollo_gateway.spdk.rpc import SPDKClient, SPDKError
-from apollo_gateway.spdk import iscsi as iscsi_rpc
-from apollo_gateway.spdk import nvmf as nvmf_rpc
-from apollo_gateway.spdk.ensure import (
+from strix_gateway.spdk.rpc import SPDKClient, SPDKError
+from strix_gateway.spdk import iscsi as iscsi_rpc
+from strix_gateway.spdk import nvmf as nvmf_rpc
+from strix_gateway.spdk.ensure import (
     _bdev_exists,
     _lvstore_exists,
     delete_lvol,
@@ -290,8 +290,8 @@ class TestEnsurePool:
         client.call.return_value = None  # bdev_get_bdevs SPDKError = not found = False
 
         # Make _bdev_exists return False and _lvstore_exists return False
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False), \
-             patch("apollo_gateway.spdk.ensure._lvstore_exists", return_value=False):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=False), \
+             patch("strix_gateway.spdk.ensure._lvstore_exists", return_value=False):
             ensure_pool(client, _pool(), "test-sub")
 
         calls = [c[0][0] for c in client.call.call_args_list]
@@ -300,15 +300,15 @@ class TestEnsurePool:
 
     def test_malloc_skips_when_bdev_and_lvstore_exist(self):
         client = MagicMock(spec=SPDKClient)
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=True), \
-             patch("apollo_gateway.spdk.ensure._lvstore_exists", return_value=True):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=True), \
+             patch("strix_gateway.spdk.ensure._lvstore_exists", return_value=True):
             ensure_pool(client, _pool(), "test-sub")
         client.call.assert_not_called()
 
     def test_aio_file_creates_bdev_and_lvstore(self):
         client = MagicMock(spec=SPDKClient)
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False), \
-             patch("apollo_gateway.spdk.ensure._lvstore_exists", return_value=False):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=False), \
+             patch("strix_gateway.spdk.ensure._lvstore_exists", return_value=False):
             ensure_pool(client, _pool(backend_type="aio_file", aio_path="/dev/sdb"), "test-sub")
         calls = [c[0][0] for c in client.call.call_args_list]
         assert "bdev_aio_create" in calls
@@ -316,26 +316,26 @@ class TestEnsurePool:
 
     def test_aio_file_missing_aio_path_raises(self):
         client = MagicMock(spec=SPDKClient)
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=False):
             with pytest.raises(ValueError, match="aio_path"):
                 ensure_pool(client, _pool(backend_type="aio_file", aio_path=None), "test-sub")
 
     def test_malloc_missing_size_mb_raises(self):
         client = MagicMock(spec=SPDKClient)
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=False):
             with pytest.raises(ValueError, match="size_mb"):
                 ensure_pool(client, _pool(backend_type="malloc", size_mb=None), "test-sub")
 
     def test_unknown_backend_raises(self):
         client = MagicMock(spec=SPDKClient)
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=False):
             with pytest.raises(ValueError, match="Unknown backend"):
                 ensure_pool(client, _pool(backend_type="unknown"), "test-sub")
 
     def test_lvstore_skipped_when_exists(self):
         client = MagicMock(spec=SPDKClient)
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False), \
-             patch("apollo_gateway.spdk.ensure._lvstore_exists", return_value=True):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=False), \
+             patch("strix_gateway.spdk.ensure._lvstore_exists", return_value=True):
             ensure_pool(client, _pool(), "test-sub")
         calls = [c[0][0] for c in client.call.call_args_list]
         assert "bdev_malloc_create" in calls
@@ -345,7 +345,7 @@ class TestEnsurePool:
 class TestEnsureLvol:
     def test_creates_when_absent(self):
         client = MagicMock(spec=SPDKClient)
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=False):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=False):
             name = ensure_lvol(client, _volume(vol_id="abc"), "mypool", "test-sub")
         assert name == "test-sub.mypool/apollo-vol-abc"
         client.call.assert_called_once_with("bdev_lvol_create", {
@@ -356,7 +356,7 @@ class TestEnsureLvol:
 
     def test_skips_when_exists(self):
         client = MagicMock(spec=SPDKClient)
-        with patch("apollo_gateway.spdk.ensure._bdev_exists", return_value=True):
+        with patch("strix_gateway.spdk.ensure._bdev_exists", return_value=True):
             name = ensure_lvol(client, _volume(vol_id="abc"), "mypool", "test-sub")
         assert name == "test-sub.mypool/apollo-vol-abc"
         client.call.assert_not_called()
@@ -384,8 +384,8 @@ class TestEnsureIscsiExport:
     def test_ensures_portal_and_initiator_groups(self):
         client = MagicMock(spec=SPDKClient)
         ec = _ec()
-        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.ensure_portal_group") as mock_pg, \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.ensure_initiator_group") as mock_ig:
+        with patch("strix_gateway.spdk.ensure.iscsi_rpc.ensure_portal_group") as mock_pg, \
+             patch("strix_gateway.spdk.ensure.iscsi_rpc.ensure_initiator_group") as mock_ig:
             ensure_iscsi_export(client, ec, _settings())
         mock_pg.assert_called_once()
         mock_ig.assert_called_once()
@@ -395,10 +395,10 @@ class TestEnsureNvmefExport:
     def test_creates_subsystem_when_absent(self):
         client = MagicMock(spec=SPDKClient)
         ec = _ec(protocol="nvmeof_tcp")
-        with patch("apollo_gateway.spdk.ensure.nvmf_rpc.ensure_transport"), \
-             patch("apollo_gateway.spdk.ensure.nvmf_rpc.subsystem_exists", return_value=False), \
-             patch("apollo_gateway.spdk.ensure.nvmf_rpc.create_subsystem") as mock_create, \
-             patch("apollo_gateway.spdk.ensure.nvmf_rpc.add_listener") as mock_listener:
+        with patch("strix_gateway.spdk.ensure.nvmf_rpc.ensure_transport"), \
+             patch("strix_gateway.spdk.ensure.nvmf_rpc.subsystem_exists", return_value=False), \
+             patch("strix_gateway.spdk.ensure.nvmf_rpc.create_subsystem") as mock_create, \
+             patch("strix_gateway.spdk.ensure.nvmf_rpc.add_listener") as mock_listener:
             ensure_nvmef_export(client, ec, _settings())
         mock_create.assert_called_once_with(
             client, ec.target_nqn,
@@ -410,9 +410,9 @@ class TestEnsureNvmefExport:
     def test_skips_when_subsystem_exists(self):
         client = MagicMock(spec=SPDKClient)
         ec = _ec(protocol="nvmeof_tcp")
-        with patch("apollo_gateway.spdk.ensure.nvmf_rpc.ensure_transport"), \
-             patch("apollo_gateway.spdk.ensure.nvmf_rpc.subsystem_exists", return_value=True), \
-             patch("apollo_gateway.spdk.ensure.nvmf_rpc.create_subsystem") as mock_create:
+        with patch("strix_gateway.spdk.ensure.nvmf_rpc.ensure_transport"), \
+             patch("strix_gateway.spdk.ensure.nvmf_rpc.subsystem_exists", return_value=True), \
+             patch("strix_gateway.spdk.ensure.nvmf_rpc.create_subsystem") as mock_create:
             ensure_nvmef_export(client, ec, _settings())
         mock_create.assert_not_called()
 
@@ -423,8 +423,8 @@ class TestEnsureIscsiMapping:
         ec = _ec()
         vol = _volume()
         mapping = _mapping(lun_id=0)
-        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=False), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.create_target_node") as mock_create:
+        with patch("strix_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=False), \
+             patch("strix_gateway.spdk.ensure.iscsi_rpc.create_target_node") as mock_create:
             ensure_iscsi_mapping(client, mapping, vol, ec)
         mock_create.assert_called_once_with(
             client, ec.target_iqn,
@@ -436,9 +436,9 @@ class TestEnsureIscsiMapping:
         ec = _ec()
         vol = _volume()
         mapping = _mapping(lun_id=2)
-        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=True), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.get_lun_ids_on_target", return_value=[0, 1]), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.add_lun") as mock_add:
+        with patch("strix_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=True), \
+             patch("strix_gateway.spdk.ensure.iscsi_rpc.get_lun_ids_on_target", return_value=[0, 1]), \
+             patch("strix_gateway.spdk.ensure.iscsi_rpc.add_lun") as mock_add:
             ensure_iscsi_mapping(client, mapping, vol, ec)
         mock_add.assert_called_once_with(client, ec.target_iqn, vol.bdev_name, 2)
 
@@ -447,9 +447,9 @@ class TestEnsureIscsiMapping:
         ec = _ec()
         vol = _volume()
         mapping = _mapping(lun_id=0)
-        with patch("apollo_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=True), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.get_lun_ids_on_target", return_value=[0]), \
-             patch("apollo_gateway.spdk.ensure.iscsi_rpc.add_lun") as mock_add:
+        with patch("strix_gateway.spdk.ensure.iscsi_rpc.target_node_exists", return_value=True), \
+             patch("strix_gateway.spdk.ensure.iscsi_rpc.get_lun_ids_on_target", return_value=[0]), \
+             patch("strix_gateway.spdk.ensure.iscsi_rpc.add_lun") as mock_add:
             ensure_iscsi_mapping(client, mapping, vol, ec)
         mock_add.assert_not_called()
 
@@ -460,8 +460,8 @@ class TestEnsureNvmefMapping:
         ec = _ec(protocol="nvmeof_tcp")
         vol = _volume()
         mapping = _mapping(underlay_id=3)
-        with patch("apollo_gateway.spdk.ensure.nvmf_rpc.get_nsids", return_value=[1, 2]), \
-             patch("apollo_gateway.spdk.ensure.nvmf_rpc.add_namespace") as mock_add:
+        with patch("strix_gateway.spdk.ensure.nvmf_rpc.get_nsids", return_value=[1, 2]), \
+             patch("strix_gateway.spdk.ensure.nvmf_rpc.add_namespace") as mock_add:
             ensure_nvmef_mapping(client, mapping, vol, ec)
         mock_add.assert_called_once_with(client, ec.target_nqn, vol.bdev_name, 3)
 
@@ -470,7 +470,7 @@ class TestEnsureNvmefMapping:
         ec = _ec(protocol="nvmeof_tcp")
         vol = _volume()
         mapping = _mapping(underlay_id=1)
-        with patch("apollo_gateway.spdk.ensure.nvmf_rpc.get_nsids", return_value=[1]), \
-             patch("apollo_gateway.spdk.ensure.nvmf_rpc.add_namespace") as mock_add:
+        with patch("strix_gateway.spdk.ensure.nvmf_rpc.get_nsids", return_value=[1]), \
+             patch("strix_gateway.spdk.ensure.nvmf_rpc.add_namespace") as mock_add:
             ensure_nvmef_mapping(client, mapping, vol, ec)
         mock_add.assert_not_called()

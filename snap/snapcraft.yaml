@@ -1,4 +1,4 @@
-name: apollo-gateway
+name: strix-gateway
 base: core24
 version: '0.1.0'
 summary: Virtual storage device control-plane backed by SPDK
@@ -8,20 +8,20 @@ description: |
   TCP export protocols.
 
   Two systemd-managed services are included:
-    apollo-gateway.spdk-tgt     — SPDK target daemon
-    apollo-gateway.apollo-gateway — FastAPI control-plane (port 8080)
+    strix-gateway.spdk-tgt     — SPDK target daemon
+    strix-gateway.strix-gateway — FastAPI control-plane (port 8080)
 
   Runtime paths
     Socket:   $SNAP_COMMON/run/spdk.sock
-    Database: $SNAP_DATA/apollo_gateway.db
+    Database: $SNAP_DATA/strix_gateway.db
 
   Operator configuration via snap set:
-    snap set apollo-gateway iscsi-portal-ip=0.0.0.0
-    snap set apollo-gateway iscsi-portal-port=3260
-    snap set apollo-gateway nvmef-portal-ip=0.0.0.0
-    snap set apollo-gateway nvmef-portal-port=4420
-    snap set apollo-gateway iqn-prefix=iqn.2026-02.lunacysystems.apollo
-    snap set apollo-gateway nqn-prefix=nqn.2026-02.io.lunacysystems:apollo
+    snap set strix-gateway iscsi-portal-ip=0.0.0.0
+    snap set strix-gateway iscsi-portal-port=3260
+    snap set strix-gateway nvmef-portal-ip=0.0.0.0
+    snap set strix-gateway nvmef-portal-port=4420
+    snap set strix-gateway iqn-prefix=iqn.2026-02.lunacysystems.apollo
+    snap set strix-gateway nqn-prefix=nqn.2026-02.io.lunacysystems:apollo
 
 grade: devel
 confinement: strict
@@ -43,7 +43,7 @@ plugs:
   # Custom system-files plug for hugepage filesystem access.
   # hugetlbfs is expected to be pre-mounted by the host OS at /dev/hugepages
   # (standard on Ubuntu). To connect after install:
-  #   sudo snap connect apollo-gateway:hugepages :system-files
+  #   sudo snap connect strix-gateway:hugepages :system-files
   #
   # NOTE: this plug requires explicit operator connection or Store auto-connect
   # approval because system-files write access to /dev/hugepages is restricted.
@@ -78,8 +78,8 @@ apps:
       # hugetlbfs read access (see plug declaration above)
       - hugepages
 
-  apollo-gateway:
-    command: bin/apollo-gateway-wrapper
+  strix-gateway:
+    command: bin/strix-gateway-wrapper
     daemon: simple
     restart-condition: on-failure
     # Wait for SPDK socket to be created before starting
@@ -89,7 +89,7 @@ apps:
       - network-bind
 
   ibm-svc-shell:
-    command: bin/apollo-svc-shell
+    command: bin/strix-svc-shell
     plugs:
       - network
       - network-bind
@@ -190,7 +190,7 @@ parts:
         "${SNAPCRAFT_PART_INSTALL}/usr/bin/spdk_tgt"
 
   # ── Apollo Gateway Python service ───────────────────────────────────────
-  apollo-gateway:
+  strix-gateway:
     plugin: uv
     source: .
     build-snaps:
@@ -206,5 +206,5 @@ parts:
     source: snap/local/
     organize:
       spdk-tgt-wrapper: bin/spdk-tgt-wrapper
-      apollo-gateway-wrapper: bin/apollo-gateway-wrapper
-      apollo-svc-shell: bin/apollo-svc-shell
+      strix-gateway-wrapper: bin/strix-gateway-wrapper
+      strix-svc-shell: bin/strix-svc-shell
