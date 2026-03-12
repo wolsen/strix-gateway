@@ -15,6 +15,7 @@ from strix_gateway.core.exceptions import (
     InvalidStateError,
     NotFoundError,
     ResourceInUseError,
+    ValidationError,
 )
 
 
@@ -51,7 +52,7 @@ class Hpe3parUnknownCommandError(Hpe3parError):
     """Unknown CLI command."""
 
     def __init__(self, cmd: str) -> None:
-        super().__init__(f"Error: unknown command '{cmd}'")
+        super().__init__(f"Error: unknown command '{cmd}'", exit_code=127)
 
 
 def core_to_3par(exc: CoreError) -> Hpe3parError:
@@ -60,6 +61,8 @@ def core_to_3par(exc: CoreError) -> Hpe3parError:
         return Hpe3parNotFoundError(str(exc))
     if isinstance(exc, AlreadyExistsError):
         return Hpe3parAlreadyExistsError(str(exc))
+    if isinstance(exc, ValidationError):
+        return Hpe3parInvalidArgError(str(exc))
     if isinstance(exc, (InvalidStateError, ResourceInUseError)):
         return Hpe3parInvalidArgError(str(exc))
     if isinstance(exc, BackendError):

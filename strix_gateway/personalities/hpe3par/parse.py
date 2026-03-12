@@ -54,7 +54,7 @@ def parse_command(cmd_str: str) -> ParsedCommand:
         raise Hpe3parInvalidArgError(f"bad quoting in command: {exc}") from exc
 
     if not tokens:
-        raise Hpe3parUnknownCommandError("")
+        raise Hpe3parInvalidArgError("empty command")
 
     command = tokens[0].lower()
     if command not in KNOWN_COMMANDS:
@@ -69,7 +69,7 @@ def parse_command(cmd_str: str) -> ParsedCommand:
 # Boolean flags that never take a value argument.
 _BOOLEAN_FLAGS = frozenset({
     "tpvv", "tdvv", "f", "d", "showcols", "nodetach",
-    "iscsi", "rcfc", "peer", "fs",
+    "iscsi", "rcfc", "peer", "fs", "add",
 })
 
 
