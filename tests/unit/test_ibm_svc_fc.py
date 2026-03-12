@@ -3,7 +3,7 @@
 """Unit tests for FC-related IBM SVC handlers.
 
 Covers the FC enhancements added to handlers.py:
-  - addhostport -fcwwpn  (FC WWPN port registration)
+  - addhostport -hbawwpn  (FC WWPN port registration)
   - lshost with WWPN fields
   - lsportfc  (FC target port discovery)
   - lsfabric  (FC fabric path enumeration)
@@ -158,14 +158,14 @@ async def run(cmd: str, ctx: SvcContext) -> tuple[int, str]:
 
 
 # ---------------------------------------------------------------------------
-# addhostport -fcwwpn
+# addhostport -hbawwpn
 # ---------------------------------------------------------------------------
 
 class TestAddHostPortFcWwpn:
     async def test_addhostport_fcwwpn_sets_wwpn(self, ctx, session_factory):
         await run("svctask mkhost -name fchost1", ctx)
         code, _ = await run(
-            "svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", ctx
+            "svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", ctx
         )
         assert code == 0
 
@@ -178,9 +178,9 @@ class TestAddHostPortFcWwpn:
 
     async def test_addhostport_multiple_wwpns(self, ctx, session_factory):
         await run("svctask mkhost -name fchost1", ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", ctx)
         code, _ = await run(
-            "svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb02", ctx
+            "svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb02 fchost1", ctx
         )
         assert code == 0
 
@@ -193,8 +193,8 @@ class TestAddHostPortFcWwpn:
 
     async def test_addhostport_fcwwpn_idempotent(self, ctx, session_factory):
         await run("svctask mkhost -name fchost1", ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", ctx)
 
         async with session_factory() as s:
             result = await s.execute(select(Host).where(Host.name == "fchost1"))
@@ -205,8 +205,8 @@ class TestAddHostPortFcWwpn:
     async def test_addhostport_mixed_iqn_and_wwpn(self, ctx, session_factory):
         """Host can have both IQN and WWPN ports."""
         await run("svctask mkhost -name mixhost", ctx)
-        await run("svctask addhostport -host mixhost -iscsiname iqn.2001:h1", ctx)
-        await run("svctask addhostport -host mixhost -fcwwpn 0x200a09c0ffe1bb01", ctx)
+        await run("svctask addhostport -force -iscsiname iqn.2001:h1 mixhost", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 mixhost", ctx)
 
         async with session_factory() as s:
             result = await s.execute(select(Host).where(Host.name == "mixhost"))
@@ -224,8 +224,8 @@ class TestAddHostPortFcWwpn:
 class TestLsHostFcWwpn:
     async def test_lshost_detail_shows_wwpn_fields(self, ctx):
         await run("svctask mkhost -name fchost1", ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb02", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb02 fchost1", ctx)
 
         code, out = await run("svcinfo lshost fchost1", ctx)
         assert code == 0
@@ -234,8 +234,8 @@ class TestLsHostFcWwpn:
 
     async def test_lshost_detail_port_count_includes_wwpns(self, ctx):
         await run("svctask mkhost -name mixhost", ctx)
-        await run("svctask addhostport -host mixhost -iscsiname iqn.example:p1", ctx)
-        await run("svctask addhostport -host mixhost -fcwwpn 0x200a09c0ffe1bb01", ctx)
+        await run("svctask addhostport -force -iscsiname iqn.example:p1 mixhost", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 mixhost", ctx)
 
         code, out = await run("svcinfo lshost mixhost", ctx)
         assert code == 0
@@ -243,7 +243,7 @@ class TestLsHostFcWwpn:
 
     async def test_lshost_list_shows_wwpn_column(self, ctx):
         await run("svctask mkhost -name fchost1", ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", ctx)
 
         code, out = await run("svcinfo lshost", ctx)
         assert code == 0
@@ -252,7 +252,7 @@ class TestLsHostFcWwpn:
     async def test_lshost_detail_no_wwpns_shows_empty(self, ctx):
         """Host with only IQNs shows empty WWPN field."""
         await run("svctask mkhost -name iscsihost", ctx)
-        await run("svctask addhostport -host iscsihost -iscsiname iqn.ex:h1", ctx)
+        await run("svctask addhostport -force -iscsiname iqn.ex:h1 iscsihost", ctx)
 
         code, out = await run("svcinfo lshost iscsihost", ctx)
         assert code == 0
@@ -310,7 +310,7 @@ class TestLsFabric:
     async def test_lsfabric_cross_product(self, fc_ctx):
         """Host with 1 WWPN × 2 target WWPNs → 2 fabric rows."""
         await run("svctask mkhost -name fchost1", fc_ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", fc_ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", fc_ctx)
 
         code, out = await run("svcinfo lsfabric -host fchost1", fc_ctx)
         assert code == 0
@@ -325,8 +325,8 @@ class TestLsFabric:
     async def test_lsfabric_multi_initiator_cross_product(self, fc_ctx):
         """Host with 2 WWPNs × 2 target WWPNs → 4 fabric rows."""
         await run("svctask mkhost -name fchost2", fc_ctx)
-        await run("svctask addhostport -host fchost2 -fcwwpn 0x200a09c0ffe1bb01", fc_ctx)
-        await run("svctask addhostport -host fchost2 -fcwwpn 0x200a09c0ffe1bb02", fc_ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost2", fc_ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb02 fchost2", fc_ctx)
 
         code, out = await run("svcinfo lsfabric -host fchost2", fc_ctx)
         assert code == 0
@@ -342,7 +342,7 @@ class TestLsFabric:
     async def test_lsfabric_host_no_wwpns_returns_empty(self, fc_ctx):
         """Host with only IQNs → no fabric entries (empty result)."""
         await run("svctask mkhost -name iscsihost", fc_ctx)
-        await run("svctask addhostport -host iscsihost -iscsiname iqn.example:h1", fc_ctx)
+        await run("svctask addhostport -force -iscsiname iqn.example:h1 iscsihost", fc_ctx)
 
         code, out = await run("svcinfo lsfabric -host iscsihost", fc_ctx)
         assert code == 0
@@ -360,7 +360,7 @@ class TestMkvdiskhostmapFcAware:
         """Create a volume and a host with FC WWPN."""
         await run("svctask mkvdisk -name fcvol1 -size 1 -unit gb -mdiskgrp pool0", ctx)
         await run("svctask mkhost -name fchost1", ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", ctx)
 
     async def test_fc_mapping_creates_successfully(self, fc_ctx, session_factory):
         """FC host + array with FC endpoint → mapping created."""
@@ -397,7 +397,7 @@ class TestMkvdiskhostmapFcAware:
         """iSCSI-only host on array with FC endpoint → iSCSI persona + underlay."""
         await run("svctask mkvdisk -name iscsivol -size 1 -unit gb -mdiskgrp pool0", fc_ctx)
         await run("svctask mkhost -name iscsihost", fc_ctx)
-        await run("svctask addhostport -host iscsihost -iscsiname iqn.example:h1", fc_ctx)
+        await run("svctask addhostport -force -iscsiname iqn.example:h1 iscsihost", fc_ctx)
         await run("svctask mkvdiskhostmap -host iscsihost iscsivol", fc_ctx)
 
         async with session_factory() as s:
@@ -434,7 +434,7 @@ class TestMkvdiskhostmapFcAware:
         # ctx has no FC endpoint
         await run("svctask mkvdisk -name vol1 -size 1 -unit gb -mdiskgrp pool0", ctx)
         await run("svctask mkhost -name fchost1", ctx)
-        await run("svctask addhostport -host fchost1 -fcwwpn 0x200a09c0ffe1bb01", ctx)
+        await run("svctask addhostport -force -hbawwpn 0x200a09c0ffe1bb01 fchost1", ctx)
         code, out = await run("svctask mkvdiskhostmap -host fchost1 vol1", ctx)
         assert code == 0
         assert "successfully created" in out
