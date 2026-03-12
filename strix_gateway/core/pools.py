@@ -9,6 +9,7 @@ vendor façades, and topology-apply all delegate here.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import TYPE_CHECKING, Optional
 
@@ -39,6 +40,7 @@ async def create_pool(
     backend_type: str,
     size_mb: Optional[int] = None,
     aio_path: Optional[str] = None,
+    vendor_metadata: dict | None = None,
 ) -> Pool:
     """Create a pool and provision it in SPDK.
 
@@ -72,6 +74,7 @@ async def create_pool(
         backend_type=backend_type,
         size_mb=size_mb,
         aio_path=aio_path,
+        vendor_metadata=json.dumps(vendor_metadata) if vendor_metadata else "{}",
     )
     session.add(pool)
     await session.flush()
