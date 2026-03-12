@@ -107,6 +107,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # of vhost mode so that vendor REST APIs are reachable in both vhost
     # (Host-header dispatch) and non-vhost (path-prefix dispatch) topologies.
     import strix_gateway.personalities.hitachi.app  # noqa: F401 — registers factory
+    import strix_gateway.personalities.hpe3par.app  # noqa: F401 — registers factory
     from strix_gateway.personalities.registry import personality_registry
 
     papps: dict[str, Any] = {}
@@ -152,6 +153,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 hitachi_mappers[arr.id] = mapper
                 logger.info("Hitachi mapper for array=%s serial=%s", arr.name, mapper.storage_device_id)
         app.state.hitachi_mappers = hitachi_mappers
+
+    # Same pattern for HPE 3PAR WSAPI state.
+    if "hpe_3par" in papps:
+        from strix_gateway.personalities.hpe3par.sessions import WsapiSessionStore
+
+        app.state.hpe3par_sessions = WsapiSessionStore()
 
     logger.info("Strix Gateway ready")
     yield

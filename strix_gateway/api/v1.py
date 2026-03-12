@@ -28,6 +28,8 @@ from strix_gateway.core.exceptions import (
 from strix_gateway.core.faults import check_fault
 from strix_gateway.core.models import (
     AttachmentsResponse,
+    Hpe3parRunRequest,
+    Hpe3parRunResponse,
     HostCreate,
     HostResponse,
     HostUpdate,
@@ -351,6 +353,43 @@ async def svc_run(body: SvcRunRequest, request: Request, db: DbSession):
     out_buf, err_buf = io.StringIO(), io.StringIO()
     exit_code = await svc_dispatch(body.command, ctx, stdout=out_buf, stderr=err_buf)
     return SvcRunResponse(
+        stdout=out_buf.getvalue(),
+        stderr=err_buf.getvalue(),
+        exit_code=exit_code,
+    )
+
+
+# ---------------------------------------------------------------------------
+# HPE 3PAR CLI proxy
+# ---------------------------------------------------------------------------
+
+@router.post("/3par/run", response_model=Hpe3parRunResponse)
+async def hpe3par_run(body: Hpe3parRunRequest, request: Request, db: DbSession):
+    import io
+
+    from strix_gateway.personalities.hpe3par.handlers import (
+        Hpe3parContext,
+        dispatch as hpe3par_dispatch,
+    )
+
+    await check_fault("hpe3par_run")
+    try:
+        arr = await arrays_svc.resolve_array(db, body.array)
+    except CoreError as exc:
+        _raise(exc)
+
+    profile = merge_profile(arr.vendor, arr.profile_dict)
+    ctx = Hpe3parContext(
+        session=db,
+        spdk=_spdk(request),
+        array_id=arr.id,
+        array_name=arr.name,
+        effective_profile=profile.model_dump(),
+    )
+
+    out_buf, err_buf = io.StringIO(), io.StringIO()
+    exit_code = await hpe3par_dispatch(body.command, ctx, stdout=out_buf, stderr=err_buf)
+    return Hpe3parRunResponse(
         stdout=out_buf.getvalue(),
         stderr=err_buf.getvalue(),
         exit_code=exit_code,

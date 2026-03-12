@@ -306,6 +306,17 @@ class SvcRunResponse(BaseModel):
     exit_code: int
 
 
+class Hpe3parRunRequest(BaseModel):
+    array: str
+    command: str
+
+
+class Hpe3parRunResponse(BaseModel):
+    stdout: str
+    stderr: str
+    exit_code: int
+
+
 # ---------------------------------------------------------------------------
 # Fault / delay injection
 # ---------------------------------------------------------------------------
