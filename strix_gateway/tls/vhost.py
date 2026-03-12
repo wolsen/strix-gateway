@@ -48,6 +48,7 @@ class ArrayInfo:
     id: str
     name: str
     fqdn: str
+    vendor: str = "generic"
 
 
 class VhostRegistry:
@@ -74,7 +75,7 @@ class VhostRegistry:
             fqdn = resolve_array_fqdn(
                 arr.name, self._domain, self._hostname_override
             )
-            new_map[fqdn] = ArrayInfo(id=arr.id, name=arr.name, fqdn=fqdn)
+            new_map[fqdn] = ArrayInfo(id=arr.id, name=arr.name, fqdn=fqdn, vendor=arr.vendor)
         self._map = new_map
         logger.info("Vhost registry rebuilt: %d mapping(s)", len(self._map))
 
