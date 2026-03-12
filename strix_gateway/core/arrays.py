@@ -86,6 +86,23 @@ async def list_arrays(session: AsyncSession) -> list[Array]:
     return list(result.scalars().all())
 
 
+async def update_array(
+    session: AsyncSession,
+    array_id: str,
+    *,
+    vendor: str | None = None,
+    profile: dict[str, Any] | None = None,
+) -> Array:
+    """Update mutable fields on an existing array."""
+    arr = await resolve_array(session, array_id)
+    if vendor is not None:
+        arr.vendor = vendor
+    if profile is not None:
+        arr.profile = json.dumps(profile)
+    await session.flush()
+    return arr
+
+
 async def get_array(session: AsyncSession, array_id: str) -> Array:
     """Get a single array by ID or name.  Raises :class:`NotFoundError`."""
     return await resolve_array(session, array_id)

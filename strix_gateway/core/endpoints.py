@@ -30,6 +30,7 @@ async def create_endpoint(
     targets: dict,
     addresses: dict | None = None,
     auth: dict | None = None,
+    vendor_metadata: dict | None = None,
 ) -> TransportEndpoint:
     """Create a transport endpoint on an array."""
     arr_result = await session.execute(select(Array).where(Array.id == array_id))
@@ -42,6 +43,7 @@ async def create_endpoint(
         targets=json.dumps(targets),
         addresses=json.dumps(addresses or {}),
         auth=json.dumps(auth or {"method": "none"}),
+        vendor_metadata=json.dumps(vendor_metadata) if vendor_metadata else "{}",
     )
     session.add(ep)
     await session.flush()
@@ -61,6 +63,26 @@ async def get_endpoint(
     ep = result.scalar_one_or_none()
     if ep is None:
         raise NotFoundError("TransportEndpoint", endpoint_id)
+    return ep
+
+
+async def update_endpoint(
+    session: AsyncSession,
+    endpoint_id: str,
+    *,
+    targets: dict | None = None,
+    addresses: dict | None = None,
+    auth: dict | None = None,
+) -> TransportEndpoint:
+    """Update mutable fields on an existing endpoint."""
+    ep = await get_endpoint(session, endpoint_id)
+    if targets is not None:
+        ep.targets = json.dumps(targets)
+    if addresses is not None:
+        ep.addresses = json.dumps(addresses)
+    if auth is not None:
+        ep.auth = json.dumps(auth)
+    await session.flush()
     return ep
 
 

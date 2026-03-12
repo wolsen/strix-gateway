@@ -256,7 +256,7 @@ class TestHostLifecycle:
     async def test_addhostport_sets_iqn(self, ctx, session_factory):
         await run("svctask mkhost -name host1", ctx)
         code, _ = await run(
-            "svctask addhostport -host host1 -iscsiname iqn.2001-04.example:h1", ctx
+            "svctask addhostport -force -iscsiname iqn.2001-04.example:h1 host1", ctx
         )
         assert code == 0
 
@@ -268,8 +268,8 @@ class TestHostLifecycle:
 
     async def test_addhostport_multiple_iqns_appended(self, ctx, session_factory):
         await run("svctask mkhost -name host1", ctx)
-        await run("svctask addhostport -host host1 -iscsiname iqn.example:p1", ctx)
-        code, _ = await run("svctask addhostport -host host1 -iscsiname iqn.example:p2", ctx)
+        await run("svctask addhostport -force -iscsiname iqn.example:p1 host1", ctx)
+        code, _ = await run("svctask addhostport -force -iscsiname iqn.example:p2 host1", ctx)
         assert code == 0
 
         async with session_factory() as s:
@@ -280,8 +280,8 @@ class TestHostLifecycle:
 
     async def test_addhostport_idempotent(self, ctx, session_factory):
         await run("svctask mkhost -name host1", ctx)
-        await run("svctask addhostport -host host1 -iscsiname iqn.example:p1", ctx)
-        await run("svctask addhostport -host host1 -iscsiname iqn.example:p1", ctx)
+        await run("svctask addhostport -force -iscsiname iqn.example:p1 host1", ctx)
+        await run("svctask addhostport -force -iscsiname iqn.example:p1 host1", ctx)
 
         async with session_factory() as s:
             result = await s.execute(select(Host).where(Host.name == "host1"))
@@ -297,7 +297,7 @@ class TestHostLifecycle:
 
     async def test_lshost_single(self, ctx):
         await run("svctask mkhost -name host1", ctx)
-        await run("svctask addhostport -host host1 -iscsiname iqn.ex:h1", ctx)
+        await run("svctask addhostport -force -iscsiname iqn.ex:h1 host1", ctx)
         code, out = await run("svcinfo lshost host1", ctx)
         assert code == 0
         assert "name!host1" in out
@@ -330,7 +330,7 @@ class TestMappingLifecycle:
         await run("svctask mkvdisk -name vol1 -size 1 -unit gb -mdiskgrp pool0", ctx)
         await run("svctask mkhost -name host1", ctx)
         await run(
-            "svctask addhostport -host host1 -iscsiname iqn.2001-04.example:h1", ctx
+            "svctask addhostport -force -iscsiname iqn.2001-04.example:h1 host1", ctx
         )
 
     async def test_mkvdiskhostmap_creates_mapping(self, ctx, session_factory):
@@ -414,7 +414,7 @@ class TestMappingLifecycle:
         # Create
         assert (await run("svctask mkvdisk -name vol1 -size 2 -unit gb -mdiskgrp pool0", ctx))[0] == 0
         assert (await run("svctask mkhost -name host1", ctx))[0] == 0
-        assert (await run("svctask addhostport -host host1 -iscsiname iqn.2001-04.example:h1", ctx))[0] == 0
+        assert (await run("svctask addhostport -force -iscsiname iqn.2001-04.example:h1 host1", ctx))[0] == 0
 
         # Map
         assert (await run("svctask mkvdiskhostmap -host host1 vol1", ctx))[0] == 0

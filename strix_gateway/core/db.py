@@ -77,6 +77,8 @@ class TransportEndpoint(Base):
     addresses: Mapped[str] = mapped_column(String, nullable=False, default="{}")
     # JSON dict: optional auth config, v1 default {"method":"none"}
     auth: Mapped[str] = mapped_column(String, nullable=False, default='{"method":"none"}')
+    # JSON dict: vendor-specific metadata (e.g. hitachi port_id, ldev numbers)
+    vendor_metadata: Mapped[str] = mapped_column(String, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
@@ -107,6 +109,14 @@ class TransportEndpoint(Base):
             return raw
         return {}
 
+    @property
+    def vendor_meta_dict(self) -> dict[str, Any]:
+        """Parsed vendor_metadata as a Python dict."""
+        raw = json.loads(self.vendor_metadata) if isinstance(self.vendor_metadata, str) else self.vendor_metadata
+        if isinstance(raw, dict):
+            return raw
+        return {}
+
 
 class Pool(Base):
     __tablename__ = "pools"
@@ -118,12 +128,22 @@ class Pool(Base):
     backend_type: Mapped[str] = mapped_column(String, nullable=False)
     size_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     aio_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # JSON dict: vendor-specific metadata (e.g. hitachi pool_id)
+    vendor_metadata: Mapped[str] = mapped_column(String, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
 
     array: Mapped["Array"] = relationship("Array", back_populates="pools", lazy="selectin")
     volumes: Mapped[list["Volume"]] = relationship("Volume", back_populates="pool", lazy="selectin")
+
+    @property
+    def vendor_meta_dict(self) -> dict[str, Any]:
+        """Parsed vendor_metadata as a Python dict."""
+        raw = json.loads(self.vendor_metadata) if isinstance(self.vendor_metadata, str) else self.vendor_metadata
+        if isinstance(raw, dict):
+            return raw
+        return {}
 
     @property
     def spdk_lvstore_name(self) -> str:
@@ -141,6 +161,8 @@ class Volume(Base):
     size_mb: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="creating")
     bdev_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # JSON dict: vendor-specific metadata (e.g. hitachi ldev_id)
+    vendor_metadata: Mapped[str] = mapped_column(String, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
@@ -150,6 +172,14 @@ class Volume(Base):
 
     pool: Mapped["Pool"] = relationship("Pool", back_populates="volumes", lazy="selectin")
     mappings: Mapped[list["Mapping"]] = relationship("Mapping", back_populates="volume", lazy="selectin")
+
+    @property
+    def vendor_meta_dict(self) -> dict[str, Any]:
+        """Parsed vendor_metadata as a Python dict."""
+        raw = json.loads(self.vendor_metadata) if isinstance(self.vendor_metadata, str) else self.vendor_metadata
+        if isinstance(raw, dict):
+            return raw
+        return {}
 
 
 class Host(Base):
@@ -162,11 +192,21 @@ class Host(Base):
     initiators_iscsi_iqns: Mapped[str] = mapped_column(String, nullable=False, default="[]")
     initiators_nvme_host_nqns: Mapped[str] = mapped_column(String, nullable=False, default="[]")
     initiators_fc_wwpns: Mapped[str] = mapped_column(String, nullable=False, default="[]")
+    # JSON dict: vendor-specific metadata (e.g. hitachi host_group numbers)
+    vendor_metadata: Mapped[str] = mapped_column(String, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
 
     mappings: Mapped[list["Mapping"]] = relationship("Mapping", back_populates="host", lazy="selectin")
+
+    @property
+    def vendor_meta_dict(self) -> dict[str, Any]:
+        """Parsed vendor_metadata as a Python dict."""
+        raw = json.loads(self.vendor_metadata) if isinstance(self.vendor_metadata, str) else self.vendor_metadata
+        if isinstance(raw, dict):
+            return raw
+        return {}
 
     @property
     def iscsi_iqns(self) -> list[str]:

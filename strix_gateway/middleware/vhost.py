@@ -33,9 +33,10 @@ class VhostMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Bypass paths that should never require vhost matching
         path: str = scope.get("path", "")
-        if any(path.startswith(p) for p in _BYPASS_PREFIXES):
+
+        # /healthz always passes through without vhost resolution
+        if path == "/healthz":
             await self.app(scope, receive, send)
             return
 
@@ -58,9 +59,15 @@ class VhostMiddleware:
 
         info = registry.lookup(host)
         if info is not None:
+            # Matched a vendor/array vhost — always set context
             scope.setdefault("state", {})["array"] = info
             scope["state"]["vhost_matched"] = True
             logger.debug("Vhost matched: host=%s array=%s", host, info.name)
+        elif any(path.startswith(p) for p in _BYPASS_PREFIXES):
+            # Base hostname + admin/docs/tls path — bypass vhost check
+            scope.setdefault("state", {})["array"] = None
+            scope["state"]["vhost_matched"] = False
+            logger.debug("Vhost bypass for host=%s path=%s", host, path)
         elif self.require_match:
             response = JSONResponse(
                 status_code=404,

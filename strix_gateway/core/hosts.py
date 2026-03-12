@@ -32,6 +32,7 @@ async def create_host(
     iscsi_iqns: list[str] | None = None,
     nvme_nqns: list[str] | None = None,
     fc_wwpns: list[str] | None = None,
+    vendor_metadata: dict | None = None,
 ) -> Host:
     """Create a new host.  Raises :class:`AlreadyExistsError` if name taken."""
     existing = await session.execute(select(Host).where(Host.name == name))
@@ -43,6 +44,7 @@ async def create_host(
         initiators_iscsi_iqns=json.dumps(iscsi_iqns or []),
         initiators_nvme_host_nqns=json.dumps(nvme_nqns or []),
         initiators_fc_wwpns=json.dumps(fc_wwpns or []),
+        vendor_metadata=json.dumps(vendor_metadata) if vendor_metadata else "{}",
     )
     session.add(host)
     await session.flush()

@@ -63,6 +63,11 @@ class ArrayCreate(BaseModel):
         return v
 
 
+class ArrayUpdate(BaseModel):
+    vendor: str | None = None
+    profile: dict[str, Any] | None = None
+
+
 class ArrayView(BaseModel):
     id: str
     name: str
@@ -113,6 +118,7 @@ class PoolCreate(BaseModel):
     backend_type: PoolBackendType
     size_mb: Optional[int] = None    # required for malloc
     aio_path: Optional[str] = None   # required for aio_file
+    array: Optional[str] = None      # array name or id; defaults to 'default'
 
 
 class PoolResponse(BaseModel):

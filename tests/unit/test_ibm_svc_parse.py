@@ -78,10 +78,11 @@ class TestParseSshCommand:
 
     def test_addhostport_iscsiname(self):
         pc = parse_ssh_command(
-            "svctask addhostport -host h1 -iscsiname iqn.2001-04.example.com:host1"
+            "svctask addhostport -force -iscsiname iqn.2001-04.example.com:host1 h1"
         )
-        assert pc.flags["host"] == "h1"
+        assert pc.flags["force"] == ""
         assert pc.flags["iscsiname"] == "iqn.2001-04.example.com:host1"
+        assert pc.positional == ["h1"]
 
     def test_expandvdisksize_positional(self):
         pc = parse_ssh_command("svctask expandvdisksize -size 5 -unit gb myvol")

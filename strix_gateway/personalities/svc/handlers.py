@@ -94,6 +94,11 @@ def _mb_to_mb_str(size_mb: int) -> str:
     return f"{size_mb:.2f}MB"
 
 
+def _mb_to_bytes_str(size_mb: int) -> str:
+    """Convert MiB to raw bytes string (for ``-bytes`` flag)."""
+    return str(size_mb * 1024 * 1024)
+
+
 def _feature(ctx: SvcContext, name: str, default: bool = False) -> bool:
     """Read a boolean feature flag from the effective capability profile."""
     return ctx.effective_profile.get("features", {}).get(name, default)
@@ -216,20 +221,218 @@ async def _lssystem(ctx: SvcContext, pc: ParsedCommand) -> str:
         "product_name": model,
         "console_IP": "127.0.0.1",
         "id_alias": "0000000000000000",
+        "topology": "standard",
         "iscsi_auth_method": "none",
         "iscsi_chap_secret": "",
     }
     return format_delim(fields, delim)
 
 
+async def _lslicense(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lslicense [-delim <d>] — license information."""
+    delim = pc.delim or "!"
+    profile = ctx.effective_profile
+    compression = _feature(ctx, "compression")
+    fields = {
+        "used_flash": "0",
+        "used_remote": "0",
+        "used_virtualization": "0",
+        "license_compression_enclosures": "1" if compression else "0",
+        "license_compression_capacity": "0",
+    }
+    return format_delim(fields, delim)
+
+
+async def _lsguicapabilities(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lsguicapabilities [-delim <d>] — GUI capability flags."""
+    delim = pc.delim or "!"
+    fields = {
+        "license_scheme": "lnx",
+        "product_key": "",
+    }
+    return format_delim(fields, delim)
+
+
+async def _lsiogrp(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lsiogrp [-delim <d>] — list IO groups."""
+    delim = pc.delim or "!"
+    rows = [
+        {
+            "id": "0",
+            "name": "io_grp0",
+            "node_count": "4",
+            "vdisk_count": "0",
+            "host_count": "0",
+        },
+    ]
+    return format_table(rows, delim)
+
+
+async def _lsnode(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lsnode [<node>] [-delim <d>] — list or show storage nodes."""
+    session = ctx.session
+    delim = pc.delim or "!"
+    node_id: Optional[str] = pc.positional[0] if pc.positional else None
+
+    # Resolve the iSCSI target IQN from this array's endpoint
+    ep_result = await session.execute(
+        select(TransportEndpoint).where(
+            TransportEndpoint.protocol == Protocol.iscsi,
+            TransportEndpoint.array_id == ctx.array_id,
+        )
+    )
+    ep = ep_result.scalar_one_or_none()
+    iscsi_name = ""
+    if ep:
+        iscsi_name = ep.targets_dict.get("target_iqn", "")
+
+    node = {
+        "id": "1",
+        "name": "node1",
+        "UPS_serial_number": "",
+        "WWNN": "5005076400C0A000",
+        "status": "online",
+        "IO_group_id": "0",
+        "IO_group_name": "io_grp0",
+        "config_node": "yes",
+        "UPS_unique_id": "",
+        "iscsi_name": iscsi_name,
+        "iscsi_alias": "",
+        "panel_name": "01-1",
+        "enclosure_id": "1",
+        "canister_id": "1",
+        "enclosure_serial_number": "",
+        "site_id": "",
+        "site_name": "",
+    }
+
+    if node_id is not None:
+        return format_delim(node, delim)
+
+    return format_table([node], delim)
+
+
+async def _lsip(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lsip [-delim <d>] [-filtervalue portset_name=X] — IP addresses."""
+    session = ctx.session
+    delim = pc.delim or "!"
+    filtervalue = pc.flags.get("filtervalue", "")
+
+    # Parse portset filter
+    filter_portset = None
+    if filtervalue:
+        for part in filtervalue.split(":"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                if k == "portset_name":
+                    filter_portset = v
+
+    # Resolve iSCSI portal IP from endpoint
+    ep_result = await session.execute(
+        select(TransportEndpoint).where(
+            TransportEndpoint.protocol == Protocol.iscsi,
+            TransportEndpoint.array_id == ctx.array_id,
+        )
+    )
+    ep = ep_result.scalar_one_or_none()
+    ip_addr = _settings.iscsi_portal_ip
+    if ep:
+        addrs = ep.addresses_dict
+        portals = addrs.get("portals", [])
+        if portals:
+            # Extract IP from "ip:port" format
+            ip_addr = portals[0].rsplit(":", 1)[0]
+
+    row = {
+        "id": "0",
+        "node_id": "1",
+        "node_name": "node1",
+        "IP_address": ip_addr,
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "portset_id": "0",
+        "portset_name": "portset0",
+        "IP_address_6": "",
+        "prefix_6": "",
+    }
+
+    if filter_portset and row["portset_name"] != filter_portset:
+        return format_table([], delim)
+
+    return format_table([row], delim)
+
+
+async def _lstargetportfc(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lstargetportfc [-delim <d>] [-filtervalue …] — FC target ports."""
+    session = ctx.session
+    delim = pc.delim or "!"
+
+    ep_result = await session.execute(
+        select(TransportEndpoint).where(
+            TransportEndpoint.protocol == Protocol.fc,
+            TransportEndpoint.array_id == ctx.array_id,
+        )
+    )
+    fc_endpoints = ep_result.scalars().all()
+
+    rows = []
+    port_idx = 0
+    for ep in fc_endpoints:
+        targets = ep.targets_dict
+        for wwpn in targets.get("target_wwpns", []):
+            rows.append({
+                "id": str(port_idx),
+                "fc_io_port_id": str(port_idx),
+                "current_node_id": "1",
+                "current_node_name": "node1",
+                "WWPN": wwpn,
+                "host_io_permitted": "yes",
+            })
+            port_idx += 1
+
+    return format_table(rows, delim)
+
+
+async def _lsfcportsetmember(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lsfcportsetmember [-delim <d>] — FC portset members."""
+    session = ctx.session
+    delim = pc.delim or "!"
+
+    ep_result = await session.execute(
+        select(TransportEndpoint).where(
+            TransportEndpoint.protocol == Protocol.fc,
+            TransportEndpoint.array_id == ctx.array_id,
+        )
+    )
+    fc_endpoints = ep_result.scalars().all()
+
+    rows = []
+    port_idx = 0
+    for ep in fc_endpoints:
+        targets = ep.targets_dict
+        for _wwpn in targets.get("target_wwpns", []):
+            rows.append({
+                "id": str(port_idx),
+                "fc_io_port_id": str(port_idx),
+                "portset_id": "0",
+                "portset_name": "portset64",
+            })
+            port_idx += 1
+
+    return format_table(rows, delim)
+
+
 async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
-    """svcinfo lsmdiskgrp [<pool_name>] [-delim <d>]"""
+    """svcinfo lsmdiskgrp [<pool_name>] [-delim <d>] [-bytes]"""
     session = ctx.session
     name_or_id: Optional[str] = pc.positional[0] if pc.positional else None
     delim = pc.delim or "!"
+    use_bytes = "bytes" in pc.flags
 
     compression = _feature(ctx, "compression")
     easy_tier = _feature(ctx, "easy_tier")
+
+    cap_fmt = _mb_to_bytes_str if use_bytes else _mb_to_gb_str
 
     if name_or_id is not None:
         result = await session.execute(
@@ -248,12 +451,12 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
             "status": "online",
             "mdisk_count": "1",
             "vdisk_count": str(len(pool.volumes)),
-            "capacity": _mb_to_gb_str(pool_cap_mb),
+            "capacity": cap_fmt(pool_cap_mb),
             "extent_size": "256",
-            "free_capacity": _mb_to_gb_str(free_mb),
-            "virtual_capacity": _mb_to_gb_str(used_mb),
-            "used_capacity": _mb_to_gb_str(used_mb),
-            "real_capacity": _mb_to_gb_str(used_mb),
+            "free_capacity": cap_fmt(free_mb),
+            "virtual_capacity": cap_fmt(used_mb),
+            "used_capacity": cap_fmt(used_mb),
+            "real_capacity": cap_fmt(used_mb),
             "overallocation": overallocation,
             "warning": "0",
             "easy_tier": "on" if easy_tier else "off",
@@ -262,6 +465,9 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
             "compression_virtual_capacity": _mb_to_mb_str(used_mb) if compression else "0.00MB",
             "compression_compressed_capacity": _mb_to_mb_str(used_mb) if compression else "0.00MB",
             "compression_uncompressed_capacity": _mb_to_mb_str(used_mb) if compression else "0.00MB",
+            "site_id": "",
+            "site_name": "",
+            "data_reduction": "no",
         }
         return format_delim(fields, delim)
 
@@ -281,20 +487,21 @@ async def _lsmdiskgrp(ctx: SvcContext, pc: ParsedCommand) -> str:
             "status": "online",
             "mdisk_count": "1",
             "vdisk_count": str(len(p.volumes)),
-            "capacity": _mb_to_gb_str(pool_cap_mb),
+            "capacity": cap_fmt(pool_cap_mb),
             "extent_size": "256",
-            "free_capacity": _mb_to_gb_str(free_mb),
-            "virtual_capacity": _mb_to_gb_str(used_mb),
+            "free_capacity": cap_fmt(free_mb),
+            "virtual_capacity": cap_fmt(used_mb),
             "compression_active": "yes" if compression else "no",
         })
-    return format_table(rows)
+    return format_table(rows, delim)
 
 
 async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
-    """svcinfo lsvdisk [<vdisk_name>] [-delim <d>]"""
+    """svcinfo lsvdisk [<vdisk_name>] [-delim <d>] [-bytes]"""
     session = ctx.session
     name_or_id: Optional[str] = pc.positional[0] if pc.positional else None
     delim = pc.delim or "!"
+    cap_fmt = _mb_to_bytes_str if "bytes" in pc.flags else _mb_to_gb_str
 
     if name_or_id is not None:
         result = await session.execute(
@@ -315,7 +522,7 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
             "status": _volume_status(volume.status),
             "mdisk_grp_id": pool.id if pool else "",
             "mdisk_grp_name": pool.name if pool else "",
-            "capacity": _mb_to_gb_str(volume.size_mb),
+            "capacity": cap_fmt(volume.size_mb),
             "type": "striped",
             "formatted": "no",
             "mdisk_id": "",
@@ -356,7 +563,7 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
             "status": _volume_status(v.status),
             "mdisk_grp_id": pool.id if pool else "",
             "mdisk_grp_name": pool.name if pool else "",
-            "capacity": _mb_to_gb_str(v.size_mb),
+            "capacity": cap_fmt(v.size_mb),
             "type": "striped",
             "FC_id": "",
             "FC_name": "",
@@ -369,7 +576,7 @@ async def _lsvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
             "se_copy_count": "0",
             "RC_change": "no",
         })
-    return format_table(rows)
+    return format_table(rows, delim)
 
 
 async def _lshost(ctx: SvcContext, pc: ParsedCommand) -> str:
@@ -427,7 +634,7 @@ async def _lshost(ctx: SvcContext, pc: ParsedCommand) -> str:
             "status": "online",
             "type": "generic",
         })
-    return format_table(rows)
+    return format_table(rows, delim)
 
 
 async def _lsportfc(ctx: SvcContext, pc: ParsedCommand) -> str:
@@ -483,7 +690,26 @@ async def _lsportfc(ctx: SvcContext, pc: ParsedCommand) -> str:
 
     if delim is not None and len(rows) == 1:
         return format_delim(rows[0], delim)
-    return format_table(rows)
+    return format_table(rows, delim or "!")
+
+
+async def _lsiscsiauth(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svcinfo lsiscsiauth [-delim <d>]
+
+    Returns iSCSI CHAP authentication info for all hosts.
+    """
+    delim = pc.delim or "!"
+    result = await ctx.session.execute(select(Host))
+    all_hosts = result.scalars().all()
+
+    rows: list[dict[str, str]] = []
+    for h in all_hosts:
+        rows.append({
+            "name": h.name,
+            "iscsi_auth_method": "none",
+            "iscsi_chap_secret": "",
+        })
+    return format_table(rows, delim)
 
 
 async def _lsfabric(ctx: SvcContext, pc: ParsedCommand) -> str:
@@ -540,7 +766,7 @@ async def _lsfabric(ctx: SvcContext, pc: ParsedCommand) -> str:
 
     if delim is not None and len(rows) == 1:
         return format_delim(rows[0], delim)
-    return format_table(rows)
+    return format_table(rows, delim or "!")
 
 
 async def _lshostvdiskmap(ctx: SvcContext, pc: ParsedCommand) -> str:
@@ -548,6 +774,7 @@ async def _lshostvdiskmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     if not pc.positional:
         raise SvcInvalidArgError("lshostvdiskmap requires a host name argument")
     host_name = pc.positional[0]
+    delim = pc.delim or "!"
     session = ctx.session
 
     host_result = await session.execute(select(Host).where(Host.name == host_name))
@@ -582,7 +809,7 @@ async def _lshostvdiskmap(ctx: SvcContext, pc: ParsedCommand) -> str:
             "mapping_type": "private",
             "lun_id": str(m.lun_id if m.lun_id is not None else ""),
         })
-    return format_table(rows)
+    return format_table(rows, delim)
 
 
 async def _lsvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
@@ -590,6 +817,7 @@ async def _lsvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
     if not pc.positional:
         raise SvcInvalidArgError("lsvdiskhostmap requires a vdisk name argument")
     vdisk_name = pc.positional[0]
+    delim = pc.delim or "!"
     session = ctx.session
 
     vol_result = await session.execute(
@@ -626,7 +854,7 @@ async def _lsvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
             "mapping_type": "private",
             "lun_id": str(m.lun_id if m.lun_id is not None else ""),
         })
-    return format_table(rows)
+    return format_table(rows, delim)
 
 
 # ---------------------------------------------------------------------------
@@ -674,7 +902,9 @@ async def _mkvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
 
     await session.commit()
     logger.info("mkvdisk: created vdisk '%s' id=%s size=%dMiB", name, volume.id, size_mb)
-    return f"Virtual Disk, id [{volume.id}], successfully created"
+    # SVC returns a numeric id; derive one from the UUID for CLI compatibility
+    numeric_id = str(abs(hash(volume.id)) % 1000000)
+    return f"Virtual Disk, id [{numeric_id}], successfully created"
 
 
 async def _rmvdisk(ctx: SvcContext, pc: ParsedCommand) -> str:
@@ -730,18 +960,26 @@ async def _expandvdisksize(ctx: SvcContext, pc: ParsedCommand) -> str:
 
 
 async def _mkhost(ctx: SvcContext, pc: ParsedCommand) -> str:
-    """svctask mkhost -name <host>"""
+    """svctask mkhost -name <host> [-iscsiname <iqn>] [-hbawwpn <wwpn>] [-force]"""
     name = require_flag(pc, "name")
+    iscsiname = optional_flag(pc, "iscsiname", "")
+    hbawwpn = optional_flag(pc, "hbawwpn", "")
     session = ctx.session
 
     try:
         host = await hosts_svc.create_host(session, name=name)
+        # Attach initial port if provided with the host creation command
+        if iscsiname:
+            await hosts_svc.add_host_port(session, host.id, port_type="iscsi", port_value=iscsiname)
+        if hbawwpn:
+            await hosts_svc.add_host_port(session, host.id, port_type="fc", port_value=hbawwpn)
     except CoreError as exc:
         raise _core_to_svc(exc) from exc
 
     await session.commit()
     logger.info("mkhost: created host '%s' id=%s", name, host.id)
-    return f"Host, id [{host.id}], successfully created"
+    numeric_id = str(abs(hash(host.id)) % 1000000)
+    return f"Host, id [{numeric_id}], successfully created"
 
 
 async def _rmhost(ctx: SvcContext, pc: ParsedCommand) -> str:
@@ -763,13 +1001,15 @@ async def _rmhost(ctx: SvcContext, pc: ParsedCommand) -> str:
 
 
 async def _addhostport(ctx: SvcContext, pc: ParsedCommand) -> str:
-    """svctask addhostport -host <host> (-iscsiname <iqn> | -fcwwpn <wwpn>)"""
-    host_name = require_flag(pc, "host")
+    """svctask addhostport -force (-iscsiname <iqn> | -hbawwpn <wwpn>) <host>"""
+    if not pc.positional:
+        raise SvcInvalidArgError("addhostport requires a host name")
+    host_name = pc.positional[0]
     iscsiname = pc.flags.get("iscsiname", "")
-    fcwwpn = pc.flags.get("fcwwpn", "")
+    hbawwpn = pc.flags.get("hbawwpn", "")
 
-    if not iscsiname and not fcwwpn:
-        raise SvcInvalidArgError("either -iscsiname or -fcwwpn is required")
+    if not iscsiname and not hbawwpn:
+        raise SvcInvalidArgError("either -iscsiname or -hbawwpn is required")
 
     session = ctx.session
 
@@ -777,13 +1017,23 @@ async def _addhostport(ctx: SvcContext, pc: ParsedCommand) -> str:
         host = await hosts_svc.get_host_by_name(session, host_name)
         if iscsiname:
             await hosts_svc.add_host_port(session, host.id, port_type="iscsi", port_value=iscsiname)
-        elif fcwwpn:
-            await hosts_svc.add_host_port(session, host.id, port_type="fc", port_value=fcwwpn)
+        elif hbawwpn:
+            await hosts_svc.add_host_port(session, host.id, port_type="fc", port_value=hbawwpn)
     except CoreError as exc:
         raise _core_to_svc(exc) from exc
 
     await session.commit()
-    logger.info("addhostport: host '%s' iqn=%s wwpn=%s", host_name, iscsiname, fcwwpn)
+    logger.info("addhostport: host '%s' iqn=%s wwpn=%s", host_name, iscsiname, hbawwpn)
+    return ""
+
+
+async def _chhost(ctx: SvcContext, pc: ParsedCommand) -> str:
+    """svctask chhost [-chapsecret <secret>] [-site <site>] [-nosite] <host>
+
+    Modifies host properties.  Gateway ignores the values but must accept
+    the command so the Cinder SVC driver can set CHAP secrets.
+    """
+    # The command takes no-output on success (run_ssh_assert_no_output).
     return ""
 
 
@@ -866,10 +1116,18 @@ async def _rmvdiskhostmap(ctx: SvcContext, pc: ParsedCommand) -> str:
 
 SVCINFO_HANDLERS: dict[str, object] = {
     "lssystem": _lssystem,
+    "lslicense": _lslicense,
+    "lsguicapabilities": _lsguicapabilities,
+    "lsiogrp": _lsiogrp,
+    "lsnode": _lsnode,
+    "lsip": _lsip,
     "lsmdiskgrp": _lsmdiskgrp,
     "lsvdisk": _lsvdisk,
     "lshost": _lshost,
+    "lsiscsiauth": _lsiscsiauth,
     "lsportfc": _lsportfc,
+    "lstargetportfc": _lstargetportfc,
+    "lsfcportsetmember": _lsfcportsetmember,
     "lsfabric": _lsfabric,
     "lshostvdiskmap": _lshostvdiskmap,
     "lsvdiskhostmap": _lsvdiskhostmap,
@@ -880,6 +1138,7 @@ SVCTASK_HANDLERS: dict[str, object] = {
     "rmvdisk": _rmvdisk,
     "expandvdisksize": _expandvdisksize,
     "mkhost": _mkhost,
+    "chhost": _chhost,
     "rmhost": _rmhost,
     "addhostport": _addhostport,
     "mkvdiskhostmap": _mkvdiskhostmap,

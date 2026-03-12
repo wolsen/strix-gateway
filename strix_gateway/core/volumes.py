@@ -9,6 +9,7 @@ vendor façades, and topology-apply all delegate here.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import TYPE_CHECKING, Optional
 
@@ -31,6 +32,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger("strix_gateway.core.volumes")
 
 
+async def update_vendor_metadata(
+    session: AsyncSession,
+    volume_id: str,
+    metadata: dict,
+) -> Volume:
+    """Merge *metadata* into a volume's vendor_metadata JSON."""
+    vol = await get_volume(session, volume_id)
+    current = vol.vendor_meta_dict
+    current.update(metadata)
+    vol.vendor_metadata = json.dumps(current)
+    await session.flush()
+    return vol
+
+
 async def create_volume(
     session: AsyncSession,
     spdk: "SPDKClient",
@@ -38,6 +53,7 @@ async def create_volume(
     name: str,
     pool_id: str,
     size_mb: int,
+    vendor_metadata: dict | None = None,
 ) -> Volume:
     """Create a volume and provision the lvol in SPDK.
 
@@ -74,6 +90,7 @@ async def create_volume(
         pool_id=pool_id,
         size_mb=size_mb,
         status=VolumeStatus.creating,
+        vendor_metadata=json.dumps(vendor_metadata) if vendor_metadata else "{}",
     )
     session.add(volume)
     await session.flush()

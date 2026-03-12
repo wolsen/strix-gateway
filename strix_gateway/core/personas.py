@@ -108,6 +108,20 @@ _PERSONA_DEFAULTS: dict[str, CapabilityProfile] = {
             multiattach=False,
         ),
     ),
+    "hitachi": CapabilityProfile(
+        model="VSP-stub",
+        version="93-06-01-80/00",
+        features=CapabilityFeatures(
+            thin_provisioning=True,
+            snapshots=True,
+            clones=True,
+            replication=False,
+            consistency_groups=False,
+            multiattach=False,
+            compression=False,
+            easy_tier=False,
+        ),
+    ),
 }
 
 
