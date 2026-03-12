@@ -73,9 +73,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     spdk_client = SPDKClient(settings.spdk_socket_path)
     app.state.spdk_client = spdk_client
 
-    # Instantiate the active personality
-    personality = GenericPersonality(settings)
-    personality.spdk = spdk_client
+    # Instantiate the default personality (capability holder)
+    personality = GenericPersonality()
     app.state.personality = personality
     logger.info("Personality: %s", type(personality).__name__)
 
