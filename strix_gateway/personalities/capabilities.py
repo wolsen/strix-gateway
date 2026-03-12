@@ -103,3 +103,20 @@ ONTAP_PROFILE = CapabilityProfile(
     model="ONTAP-stub",
     version="9.13.0",
 )
+
+HPE_3PAR_PROFILE = CapabilityProfile(
+    supports_iscsi=True,
+    supports_fc=True,
+    supports_nvmeof_tcp=False,
+    supports_snapshots=True,
+    supports_clones=True,
+    supports_qos=False,
+    supports_replication=False,
+    supports_host_groups=False,
+    supports_multiattach=True,
+    supports_thin_provisioning=True,
+    supports_compression=False,
+    supports_easy_tier=False,
+    model="3PAR-stub",
+    version="3.3.1",
+)

@@ -122,6 +122,23 @@ _PERSONA_DEFAULTS: dict[str, CapabilityProfile] = {
             easy_tier=False,
         ),
     ),
+    "hpe_3par": CapabilityProfile(
+        model="3PAR-stub",
+        version="3.3.1",
+        features=CapabilityFeatures(
+            thin_provisioning=True,
+            snapshots=True,
+            clones=True,
+            replication=False,
+            consistency_groups=False,
+            multiattach=True,
+            compression=False,
+            easy_tier=False,
+        ),
+        quirks=CapabilityQuirks(
+            strict_name_length=31,
+        ),
+    ),
 }
 
 
