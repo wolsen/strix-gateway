@@ -13,7 +13,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 logger = logging.getLogger("strix_gateway.middleware.vhost")
 
 # Paths that bypass vhost matching (always pass through).
-_BYPASS_PREFIXES = ("/healthz", "/admin", "/docs", "/openapi.json", "/redoc", "/v1/tls/")
+_BYPASS_PREFIXES = ("/healthz", "/admin", "/docs", "/openapi.json", "/redoc", "/v1/tls/", "/v1/svc/")
 
 
 class VhostMiddleware:

@@ -16,10 +16,12 @@ from strix_gateway.core.db import Array, Pool, TransportEndpoint, Volume, get_se
 from strix_gateway.core.exceptions import CoreError
 from strix_gateway.core.models import (
     ArrayCreate,
+    ArrayUpdate,
     ArrayView,
     CapabilitiesView,
     PoolResponse,
     TransportEndpointCreate,
+    TransportEndpointUpdate,
     TransportEndpointView,
 )
 from strix_gateway.core import (
@@ -120,6 +122,20 @@ async def get_array(array_id: str, db: DbSession):
     return _array_to_view(arr)
 
 
+@router.patch("/{array_id}", response_model=ArrayView)
+async def update_array(array_id: str, body: ArrayUpdate, request: Request, db: DbSession):
+    try:
+        arr = await arrays_svc.update_array(
+            db, array_id, vendor=body.vendor, profile=body.profile,
+        )
+    except CoreError as exc:
+        _raise(exc)
+    await db.commit()
+    logger.info("Updated array '%s'", arr.name)
+    await _refresh_vhost_state(request)
+    return _array_to_view(arr)
+
+
 @router.delete("/{array_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_array(
     array_id: str,
@@ -195,6 +211,24 @@ async def get_endpoint(array_id: str, endpoint_id: str, db: DbSession):
             raise HTTPException(status_code=404, detail=f"Endpoint {endpoint_id} not found")
     except CoreError as exc:
         _raise(exc)
+    return _ep_to_view(ep)
+
+
+@router.patch("/{array_id}/endpoints/{endpoint_id}", response_model=TransportEndpointView)
+async def update_endpoint(array_id: str, endpoint_id: str, body: TransportEndpointUpdate, db: DbSession):
+    try:
+        arr = await arrays_svc.resolve_array(db, array_id)
+        ep = await endpoints_svc.get_endpoint(db, endpoint_id)
+        if ep.array_id != arr.id:
+            raise HTTPException(status_code=404, detail=f"Endpoint {endpoint_id} not found")
+        ep = await endpoints_svc.update_endpoint(
+            db, endpoint_id,
+            targets=body.targets, addresses=body.addresses, auth=body.auth,
+        )
+    except CoreError as exc:
+        _raise(exc)
+    await db.commit()
+    logger.info("Updated endpoint %s on array '%s'", endpoint_id, arr.name)
     return _ep_to_view(ep)
 
 

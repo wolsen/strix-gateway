@@ -92,9 +92,15 @@ class CapabilitiesView(BaseModel):
 
 class TransportEndpointCreate(BaseModel):
     protocol: Protocol
-    targets: dict[str, Any]
+    targets: dict[str, Any] = {}
     addresses: dict[str, Any] = {}
     auth: dict[str, Any] = {"method": "none"}
+
+
+class TransportEndpointUpdate(BaseModel):
+    targets: dict[str, Any] | None = None
+    addresses: dict[str, Any] | None = None
+    auth: dict[str, Any] | None = None
 
 
 class TransportEndpointView(BaseModel):

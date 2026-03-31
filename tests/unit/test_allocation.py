@@ -4,7 +4,7 @@
 
 import pytest
 
-from strix_gateway.spdk.ensure import allocate_lun, allocate_nsid
+from strix_gateway.spdk.ensure import allocate_lun, allocate_lun_from_base, allocate_nsid
 
 
 class TestAllocateLun:
@@ -58,3 +58,15 @@ class TestAllocateNsid:
 
     def test_unordered_input(self):
         assert allocate_nsid([3, 1, 2]) == 4
+
+
+class TestAllocateLunFromBase:
+    def test_base_zero_matches_allocate_lun(self):
+        assert allocate_lun_from_base([0, 2], 0) == 1
+
+    def test_base_one_starts_at_one(self):
+        assert allocate_lun_from_base([], 1) == 1
+        assert allocate_lun_from_base([1], 1) == 2
+
+    def test_base_one_fills_gap(self):
+        assert allocate_lun_from_base([1, 3], 1) == 2

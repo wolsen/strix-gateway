@@ -71,27 +71,55 @@ push_file "${GATEWAY_VM}" "${TOPO_FILE}" "/root/topo.yaml"
 
 log_info "Starting gateway (mode=${MODE})"
 if [[ "${MODE}" == "vhost" ]]; then
+  # Bootstrap: start without vhost so the CLI can apply topology via
+  # 127.0.0.1.  Once the arrays are in place, restart with vhost enabled.
   vm_exec "${GATEWAY_VM}" bash -c "
     source /root/e2e-lib/common.sh
     source /root/e2e-lib/gateway.sh
     start_fake_spdk
-    start_gateway /root/strix-gateway vhost ${VHOST_DOMAIN}
+    start_gateway /root/strix-gateway non-vhost '' '${GATEWAY_IP}'
+  "
+
+  log_info "Applying topology (bootstrap)"
+  vm_exec "${GATEWAY_VM}" bash -c "
+    source /root/e2e-lib/common.sh
+    source /root/e2e-lib/gateway.sh
+    apply_topology /root/strix-gateway /root/topo.yaml
+  "
+
+  log_info "Restarting gateway with vhost enabled"
+  vm_exec "${GATEWAY_VM}" bash -c "
+    pkill -f '[u]vicorn strix_gateway.main:app' 2>/dev/null || true
+    sleep 1
+  "
+  vm_exec "${GATEWAY_VM}" bash -c "
+    source /root/e2e-lib/common.sh
+    source /root/e2e-lib/gateway.sh
+    start_fake_spdk
+    start_gateway /root/strix-gateway vhost ${VHOST_DOMAIN} '${GATEWAY_IP}'
   "
 else
   vm_exec "${GATEWAY_VM}" bash -c "
     source /root/e2e-lib/common.sh
     source /root/e2e-lib/gateway.sh
     start_fake_spdk
-    start_gateway /root/strix-gateway non-vhost
+    start_gateway /root/strix-gateway non-vhost '' '${GATEWAY_IP}'
+  "
+
+  # Apply topology
+  log_info "Applying topology"
+  vm_exec "${GATEWAY_VM}" bash -c "
+    source /root/e2e-lib/common.sh
+    source /root/e2e-lib/gateway.sh
+    apply_topology /root/strix-gateway /root/topo.yaml
   "
 fi
 
-# Apply topology
-log_info "Applying topology"
+# Ensure SSH facade targets the correct subsystem for this scenario
 vm_exec "${GATEWAY_VM}" bash -c "
   source /root/e2e-lib/common.sh
   source /root/e2e-lib/gateway.sh
-  apply_topology /root/strix-gateway /root/topo.yaml
+  setup_ssh_facade /root/strix-gateway '${ARRAY_NAME}'
 "
 
 # ---------------------------------------------------------------------------
@@ -102,12 +130,11 @@ log_info "Configuring Cinder backend for ${DRIVER_NAME}"
 # Push backend conf
 push_file "${GATEWAY_VM}" "${BACKEND_CONF}" "/root/cinder-backend.conf"
 
-# Determine which SVC subsystem Cinder should connect to
-if [[ "${MODE}" == "vhost" ]]; then
-  SVC_SAN_IP="${ARRAY_NAME}.$(vm_exec "${GATEWAY_VM}" hostname).${VHOST_DOMAIN}"
-else
-  SVC_SAN_IP="127.0.0.1"
-fi
+# Determine which SVC subsystem Cinder should connect to.
+# The SSH facade always runs locally and is hostname-agnostic
+# (ForceCommand routes to the "default" subsystem), so san_ip
+# is always 127.0.0.1 regardless of vhost mode.
+SVC_SAN_IP="127.0.0.1"
 
 vm_exec "${GATEWAY_VM}" bash -c "
   source /root/e2e-lib/common.sh

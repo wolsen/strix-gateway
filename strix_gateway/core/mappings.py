@@ -44,7 +44,7 @@ from strix_gateway.core.models import (
     Protocol,
     VolumeStatus,
 )
-from strix_gateway.spdk.ensure import allocate_lun, allocate_nsid
+from strix_gateway.spdk.ensure import allocate_lun, allocate_lun_from_base, allocate_nsid
 
 if TYPE_CHECKING:
     from strix_gateway.config import Settings
@@ -197,7 +197,9 @@ async def create_mapping(
             )
         )
         used_underlay_luns = [m.underlay_id for m in existing_underlay.scalars().all()]
-        underlay_id = allocate_lun(used_underlay_luns)
+        underlay_id = allocate_lun_from_base(
+            used_underlay_luns, settings.iscsi_underlay_lun_base,
+        )
 
     mapping = Mapping(
         host_id=host_id,

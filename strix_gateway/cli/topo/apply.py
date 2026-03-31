@@ -43,7 +43,19 @@ def apply_topology(
     existing_arrays = {a["name"]: a for a in client.list_arrays()}
     for spec in topo.arrays:
         if spec.name in existing_arrays:
-            actions.append(f"array '{spec.name}' already exists")
+            existing = existing_arrays[spec.name]
+            # Update vendor/profile if they differ from the topology spec.
+            updates: dict[str, object] = {}
+            if spec.vendor and existing.get("vendor") != spec.vendor:
+                updates["vendor"] = spec.vendor
+            existing_profile = existing.get("profile") or {}
+            if spec.profile and existing_profile != spec.profile:
+                updates["profile"] = spec.profile
+            if updates:
+                client.update_array(spec.name, **updates)
+                actions.append(f"updated array '{spec.name}': {updates}")
+            else:
+                actions.append(f"array '{spec.name}' already exists")
         else:
             client.create_array(
                 spec.name,
@@ -52,22 +64,44 @@ def apply_topology(
             )
             actions.append(f"created array '{spec.name}'")
 
-        # Ensure declared endpoints exist
+        # Ensure declared endpoints exist and have correct targets/addresses
         existing_eps = client.list_endpoints(spec.name)
-        existing_protos = {ep["protocol"] for ep in existing_eps}
+        existing_by_proto = {ep["protocol"]: ep for ep in existing_eps}
         for ep_spec in spec.endpoints:
-            if ep_spec.protocol in existing_protos:
-                actions.append(
-                    f"endpoint '{ep_spec.protocol}' on '{spec.name}' "
-                    "already exists"
-                )
+            existing_ep = existing_by_proto.get(ep_spec.protocol)
+            if existing_ep is not None:
+                # Check whether targets/addresses/auth need updating
+                ep_updates: dict[str, object] = {}
+                if ep_spec.targets and existing_ep.get("targets") != ep_spec.targets:
+                    ep_updates["targets"] = ep_spec.targets
+                if ep_spec.addresses and existing_ep.get("addresses") != ep_spec.addresses:
+                    ep_updates["addresses"] = ep_spec.addresses
+                if ep_spec.auth and existing_ep.get("auth") != ep_spec.auth:
+                    ep_updates["auth"] = ep_spec.auth
+                if ep_updates:
+                    client.update_endpoint(
+                        spec.name,
+                        existing_ep["id"],
+                        targets=ep_updates.get("targets"),
+                        addresses=ep_updates.get("addresses"),
+                        auth=ep_updates.get("auth"),
+                    )
+                    actions.append(
+                        f"updated endpoint '{ep_spec.protocol}' on "
+                        f"'{spec.name}': {ep_updates}"
+                    )
+                else:
+                    actions.append(
+                        f"endpoint '{ep_spec.protocol}' on '{spec.name}' "
+                        "already exists"
+                    )
             else:
                 client.create_endpoint(
                     spec.name,
                     protocol=ep_spec.protocol,
-                    targets=ep_spec.targets or None,
-                    addresses=ep_spec.addresses or None,
-                    auth=ep_spec.auth or None,
+                    targets=ep_spec.targets,
+                    addresses=ep_spec.addresses,
+                    auth=ep_spec.auth,
                 )
                 actions.append(
                     f"created endpoint '{ep_spec.protocol}' on "

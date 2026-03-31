@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     iscsi_portal_ip: str = "0.0.0.0"
     iscsi_portal_port: int = 3260
+    iscsi_underlay_lun_base: int = 0
 
     nvmef_portal_ip: str = "0.0.0.0"
     nvmef_portal_port: int = 4420

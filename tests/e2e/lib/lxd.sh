@@ -26,13 +26,13 @@ create_vm() {
   if ! launch_err="$(lxc launch "${image}" "${name}" --vm \
     -c boot.mode=uefi-nosecureboot \
     -c limits.memory="${memory}" \
-    -c limits.cpu="${cpus}" 2>&1)"; then
+    -c limits.cpu="${cpus}" </dev/null 2>&1)"; then
     if grep -q "boot.mode.*isn't supported" <<<"${launch_err}"; then
       log_info "LXD does not support boot.mode for VMs; retrying with legacy security.secureboot"
       if ! launch_err="$(lxc launch "${image}" "${name}" --vm \
         -c security.secureboot=false \
         -c limits.memory="${memory}" \
-        -c limits.cpu="${cpus}" 2>&1)"; then
+        -c limits.cpu="${cpus}" </dev/null 2>&1)"; then
         printf '%s\n' "${launch_err}" >&2
         return 1
       fi
@@ -134,7 +134,7 @@ push_repos() {
 
 push_file() {
   local vm_name="$1" local_path="$2" remote_path="$3"
-  lxc file push "${local_path}" "${vm_name}${remote_path}"
+  lxc file push --create-dirs "${local_path}" "${vm_name}${remote_path}"
 }
 
 vm_exec() {

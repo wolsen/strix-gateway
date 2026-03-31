@@ -43,6 +43,12 @@ def allocate_lun(used: list[int]) -> int:
     return candidate
 
 
+def allocate_lun_from_base(used: list[int], base: int = 0) -> int:
+    """Return the smallest available LUN ID starting at *base*."""
+    normalized = [u - base for u in used if u >= base]
+    return allocate_lun(normalized) + base
+
+
 def allocate_nsid(used: list[int]) -> int:
     """Return the smallest integer ≥ 1 not in *used* (NSID 0 is reserved)."""
     used_set = set(used)
@@ -338,4 +344,3 @@ def ensure_nvmef_mapping(
         nvmf_rpc.add_namespace(client, target_nqn, volume.bdev_name, nsid)
     else:
         logger.debug("NSID %d already in subsystem %s", nsid, target_nqn)
-

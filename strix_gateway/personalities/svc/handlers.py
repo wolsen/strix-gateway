@@ -285,6 +285,8 @@ async def _lsnode(ctx: SvcContext, pc: ParsedCommand) -> str:
     iscsi_name = ""
     if ep:
         iscsi_name = ep.targets_dict.get("target_iqn", "")
+    if not iscsi_name:
+        iscsi_name = f"{_settings.iqn_prefix}:{ctx.array_name}"
 
     node = {
         "id": "1",
@@ -336,6 +338,8 @@ async def _lsip(ctx: SvcContext, pc: ParsedCommand) -> str:
     )
     ep = ep_result.scalar_one_or_none()
     ip_addr = _settings.iscsi_portal_ip
+    if ip_addr == "0.0.0.0":
+        ip_addr = "127.0.0.1"
     if ep:
         addrs = ep.addresses_dict
         portals = addrs.get("portals", [])

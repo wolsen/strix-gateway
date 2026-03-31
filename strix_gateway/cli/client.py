@@ -120,8 +120,7 @@ class StrixClient:
         auth: dict | None = None,
     ) -> dict:
         body: dict[str, Any] = {"protocol": protocol}
-        if targets is not None:
-            body["targets"] = targets
+        body["targets"] = targets if targets is not None else {}
         if addresses is not None:
             body["addresses"] = addresses
         if auth is not None:
@@ -130,6 +129,23 @@ class StrixClient:
 
     def delete_endpoint(self, array: str, endpoint_id: str) -> None:
         self.delete(f"/v1/arrays/{array}/endpoints/{endpoint_id}")
+
+    def update_endpoint(
+        self,
+        array: str,
+        endpoint_id: str,
+        targets: dict | None = None,
+        addresses: dict | None = None,
+        auth: dict | None = None,
+    ) -> dict:
+        body: dict[str, Any] = {}
+        if targets is not None:
+            body["targets"] = targets
+        if addresses is not None:
+            body["addresses"] = addresses
+        if auth is not None:
+            body["auth"] = auth
+        return self.patch(f"/v1/arrays/{array}/endpoints/{endpoint_id}", json=body)
 
     # ------------------------------------------------------------------
     # Pools
@@ -155,7 +171,20 @@ class StrixClient:
         }
         if aio_path:
             body["aio_path"] = aio_path
-        return self.post("/v1/pools", json=body)
+        if array == "default":
+            return self.post("/v1/pools", json=body)
+
+        # The v1 pool-create API always creates on the default array.
+        # For named arrays, first repair any misplaced default-bound pool
+        # left by an older apply run, otherwise create then attach.
+        try:
+            default_pool = self.resolve_pool(name, "default")
+        except ValidationError:
+            default_pool = self.post("/v1/pools", json=body)
+
+        return self.post(
+            f"/v1/arrays/{array}/pools/{default_pool['id']}",
+        )
 
     def delete_pool(self, pool_id: str) -> None:
         self.delete(f"/v1/pools/{pool_id}")

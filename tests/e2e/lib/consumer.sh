@@ -20,6 +20,7 @@ install_consumer_deps() {
   apt-get install -y -qq \
     python3-dev python3-venv \
     open-iscsi \
+    sudo \
     libffi-dev libssl-dev \
     jq curl >/dev/null 2>&1
 
@@ -36,6 +37,11 @@ install_consumer_deps() {
     os-brick \
     python-openstackclient \
     python-cinderclient >/dev/null 2>&1
+
+  # oslo.privsep expects the helper to be reachable via the root helper PATH.
+  if [[ -x /opt/consumer/.venv/bin/privsep-helper ]]; then
+    ln -sf /opt/consumer/.venv/bin/privsep-helper /usr/local/bin/privsep-helper
+  fi
 
   log_info "Consumer base deps installed"
 }
@@ -135,9 +141,19 @@ osbrick_connect_iscsi() {
   local target_iqn="$2"
   local target_lun="${3:-0}"
 
-  /opt/consumer/.venv/bin/python3 <<PYEOF
-import json, sys
+/opt/consumer/.venv/bin/python3 <<PYEOF
+import json, sys, os
+os.makedirs("/tmp/os-brick-locks", exist_ok=True)
+import os_brick
 from os_brick.initiator import connector as brick_connector
+from oslo_concurrency import lockutils
+
+lockutils.set_defaults("/tmp/os-brick-locks")
+if hasattr(os_brick, "setup"):
+    try:
+        os_brick.setup(root_helper="sudo")
+    except Exception:
+        pass
 
 conn_props = {
     "driver_volume_type": "iscsi",
@@ -148,7 +164,15 @@ conn_props = {
         "volume_id": "e2e-test-vol",
     },
 }
-initiator = brick_connector.InitiatorConnector.factory("ISCSI", None, use_multipath=False)
+# targetcli-backed e2e exports use positive LUN numbers only.
+if conn_props["data"]["target_lun"] == 0:
+    conn_props["data"]["target_lun"] = 1
+initiator = brick_connector.InitiatorConnector.factory(
+    "ISCSI",
+    root_helper="sudo",
+    use_multipath=False,
+    device_scan_attempts=6,
+)
 device_info = initiator.connect_volume(conn_props["data"])
 print(json.dumps(device_info))
 PYEOF
@@ -159,8 +183,19 @@ osbrick_disconnect_iscsi() {
   local target_iqn="$2"
   local target_lun="${3:-0}"
 
-  /opt/consumer/.venv/bin/python3 <<PYEOF
+/opt/consumer/.venv/bin/python3 <<PYEOF
+import os
+os.makedirs("/tmp/os-brick-locks", exist_ok=True)
+import os_brick
 from os_brick.initiator import connector as brick_connector
+from oslo_concurrency import lockutils
+
+lockutils.set_defaults("/tmp/os-brick-locks")
+if hasattr(os_brick, "setup"):
+    try:
+        os_brick.setup(root_helper="sudo")
+    except Exception:
+        pass
 
 conn_props = {
     "target_portal": "${target_portal}",
@@ -168,7 +203,15 @@ conn_props = {
     "target_lun": ${target_lun},
     "volume_id": "e2e-test-vol",
 }
-initiator = brick_connector.InitiatorConnector.factory("ISCSI", None, use_multipath=False)
+# targetcli-backed e2e exports use positive LUN numbers only.
+if conn_props["target_lun"] == 0:
+    conn_props["target_lun"] = 1
+initiator = brick_connector.InitiatorConnector.factory(
+    "ISCSI",
+    root_helper="sudo",
+    use_multipath=False,
+    device_scan_attempts=6,
+)
 try:
     initiator.disconnect_volume(conn_props, None)
 except Exception as e:
@@ -180,9 +223,19 @@ osbrick_connect_fc() {
   local target_wwpn="$1"
   local target_lun="${2:-0}"
 
-  /opt/consumer/.venv/bin/python3 <<PYEOF
-import json, sys
+/opt/consumer/.venv/bin/python3 <<PYEOF
+import json, sys, os
+os.makedirs("/tmp/os-brick-locks", exist_ok=True)
+import os_brick
 from os_brick.initiator import connector as brick_connector
+from oslo_concurrency import lockutils
+
+lockutils.set_defaults("/tmp/os-brick-locks")
+if hasattr(os_brick, "setup"):
+    try:
+        os_brick.setup(root_helper="sudo")
+    except Exception:
+        pass
 
 conn_props = {
     "driver_volume_type": "fibre_channel",
@@ -197,7 +250,12 @@ conn_props = {
         "access_mode": "rw",
     },
 }
-initiator = brick_connector.InitiatorConnector.factory("FIBRE_CHANNEL", None, use_multipath=False)
+initiator = brick_connector.InitiatorConnector.factory(
+    "FIBRE_CHANNEL",
+    root_helper="sudo",
+    use_multipath=False,
+    device_scan_attempts=6,
+)
 device_info = initiator.connect_volume(conn_props["data"])
 print(json.dumps(device_info))
 PYEOF
@@ -207,8 +265,19 @@ osbrick_disconnect_fc() {
   local target_wwpn="$1"
   local target_lun="${2:-0}"
 
-  /opt/consumer/.venv/bin/python3 <<PYEOF
+/opt/consumer/.venv/bin/python3 <<PYEOF
+import os
+os.makedirs("/tmp/os-brick-locks", exist_ok=True)
+import os_brick
 from os_brick.initiator import connector as brick_connector
+from oslo_concurrency import lockutils
+
+lockutils.set_defaults("/tmp/os-brick-locks")
+if hasattr(os_brick, "setup"):
+    try:
+        os_brick.setup(root_helper="sudo")
+    except Exception:
+        pass
 
 conn_props = {
     "target_discovered": True,
@@ -220,7 +289,12 @@ conn_props = {
     "volume_id": "e2e-test-vol",
     "access_mode": "rw",
 }
-initiator = brick_connector.InitiatorConnector.factory("FIBRE_CHANNEL", None, use_multipath=False)
+initiator = brick_connector.InitiatorConnector.factory(
+    "FIBRE_CHANNEL",
+    root_helper="sudo",
+    use_multipath=False,
+    device_scan_attempts=6,
+)
 try:
     initiator.disconnect_volume(conn_props, None)
 except Exception as e:

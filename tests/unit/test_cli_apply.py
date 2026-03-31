@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from strix_gateway.cli.errors import APIError, ValidationError
+from strix_gateway.cli.client import StrixClient
 from strix_gateway.cli.topo.apply import apply_topology, smoke_test
 from strix_gateway.cli.topo.models import TopologyFile
 
@@ -66,7 +67,12 @@ class _FakeClient:
     def create_array(self, name, vendor="generic", profile=None):
         self.calls.append(f"create_array:{name}")
         aid = self._next_id()
-        self._arrays[name] = {"id": aid, "name": name}
+        self._arrays[name] = {"id": aid, "name": name, "vendor": vendor, "profile": profile}
+        return self._arrays[name]
+
+    def update_array(self, name, **fields):
+        self.calls.append(f"update_array:{name}")
+        self._arrays[name].update(fields)
         return self._arrays[name]
 
     def get_array(self, name):
@@ -83,9 +89,22 @@ class _FakeClient:
     def create_endpoint(self, array, protocol, targets=None, addresses=None, auth=None):
         self.calls.append(f"create_endpoint:{array}:{protocol}")
         eid = self._next_id()
-        ep = {"id": eid, "protocol": protocol}
+        ep = {"id": eid, "protocol": protocol, "targets": targets or {}, "addresses": addresses or {}, "auth": auth or {}}
         self._endpoints.setdefault(array, []).append(ep)
         return ep
+
+    def update_endpoint(self, array, endpoint_id, targets=None, addresses=None, auth=None):
+        self.calls.append(f"update_endpoint:{array}:{endpoint_id}")
+        for ep in self._endpoints.get(array, []):
+            if ep["id"] == endpoint_id:
+                if targets is not None:
+                    ep["targets"] = targets
+                if addresses is not None:
+                    ep["addresses"] = addresses
+                if auth is not None:
+                    ep["auth"] = auth
+                return ep
+        raise APIError(404, f"not found: {endpoint_id}")
 
     # Pools
     def list_pools(self, array=None):
@@ -196,8 +215,8 @@ class TestApplyOrdering:
         """When resources already exist, apply should not recreate them."""
         client = _FakeClient()
         # Pre-populate
-        client._arrays["a1"] = {"id": "pre-1", "name": "a1"}
-        client._endpoints["a1"] = [{"id": "pre-ep", "protocol": "iscsi"}]
+        client._arrays["a1"] = {"id": "pre-1", "name": "a1", "vendor": "generic", "profile": None}
+        client._endpoints["a1"] = [{"id": "pre-ep", "protocol": "iscsi", "targets": {}, "addresses": {}, "auth": {"method": "none"}}]
         client._pools["p1"] = {"id": "pre-2", "name": "p1"}
         client._hosts["h1"] = {"id": "pre-3", "name": "h1"}
         client._volumes["v1"] = {"id": "pre-4", "name": "v1"}
@@ -214,12 +233,14 @@ class TestApplyOrdering:
 
         creates = [c for c in client.calls if c.startswith("create_")]
         assert creates == [], "Nothing should be created when all resources exist"
+        updates = [c for c in client.calls if c.startswith("update_")]
+        assert updates == [], "Nothing should be updated if vendor/profile match"
 
     def test_strict_mode_reports_extras(self):
         """Strict mode reports live resources not in topology."""
         client = _FakeClient()
-        client._arrays["a1"] = {"id": "pre-1", "name": "a1"}
-        client._endpoints["a1"] = [{"id": "pre-ep", "protocol": "iscsi"}]
+        client._arrays["a1"] = {"id": "pre-1", "name": "a1", "vendor": "generic", "profile": None}
+        client._endpoints["a1"] = [{"id": "pre-ep", "protocol": "iscsi", "targets": {}, "addresses": {}, "auth": {"method": "none"}}]
         client._pools["p1"] = {"id": "pre-2", "name": "p1"}
         client._pools["extra-pool"] = {"id": "pre-99", "name": "extra-pool"}
         client._hosts["h1"] = {"id": "pre-3", "name": "h1"}
@@ -238,6 +259,45 @@ class TestApplyOrdering:
         assert any("extra-pool" in m for m in strict_msgs)
 
 
+def test_client_create_pool_attaches_non_default_arrays():
+    client = object.__new__(StrixClient)
+    client.resolve_pool = MagicMock(side_effect=[
+        ValidationError("missing from target"),
+        ValidationError("missing from default"),
+    ])
+    client.post = MagicMock(side_effect=[
+        {"id": "pool-1", "name": "gold"},
+        {"id": "pool-1", "name": "gold", "array_id": "svc-a"},
+    ])
+
+    result = StrixClient.create_pool(client, "gold", "svc-a", "malloc", 10)
+
+    assert result["array_id"] == "svc-a"
+    assert client.post.mock_calls == [
+        call("/v1/pools", json={
+            "name": "gold",
+            "backend_type": "malloc",
+            "size_mb": 10240,
+        }),
+        call("/v1/arrays/svc-a/pools/pool-1"),
+    ]
+
+
+def test_client_create_pool_reuses_misplaced_default_pool():
+    client = object.__new__(StrixClient)
+    client.resolve_pool = MagicMock(return_value={"id": "pool-1", "name": "gold"})
+    client.post = MagicMock(return_value={
+        "id": "pool-1",
+        "name": "gold",
+        "array_id": "svc-a",
+    })
+
+    result = StrixClient.create_pool(client, "gold", "svc-a", "malloc", 10)
+
+    assert result["array_id"] == "svc-a"
+    client.post.assert_called_once_with("/v1/arrays/svc-a/pools/pool-1")
+
+
 # ------------------------------------------------------------------
 # Smoke test
 # ------------------------------------------------------------------
@@ -246,7 +306,7 @@ class TestApplyOrdering:
 class TestSmokeTest:
     def test_all_pass(self):
         client = _FakeClient()
-        client._arrays["a1"] = {"id": "1", "name": "a1"}
+        client._arrays["a1"] = {"id": "1", "name": "a1", "vendor": "generic", "profile": None}
         client._pools["p1"] = {"id": "2", "name": "p1"}
         client._hosts["h1"] = {"id": "3", "name": "h1"}
         client._volumes["v1"] = {"id": "4", "name": "v1"}

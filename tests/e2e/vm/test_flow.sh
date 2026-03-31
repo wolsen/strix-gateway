@@ -48,10 +48,19 @@ source /root/openrc
 
 # Verify OpenStack connection
 log_step "Verifying OpenStack connectivity"
-${OSC} token issue -f value -c id >/dev/null 2>&1 || {
-  log_error "Failed to get Keystone token. Check openrc and Keystone service."
-  exit 1
-}
+OSC_ERR_LOG="/tmp/e2e-openstack-token.err"
+rm -f "${OSC_ERR_LOG}"
+for i in $(seq 1 30); do
+  if ${OSC} token issue -f value -c id >/dev/null 2>"${OSC_ERR_LOG}"; then
+    break
+  fi
+  if [[ $i -eq 30 ]]; then
+    log_error "Failed to get Keystone token after 30 attempts. Check openrc and Keystone service."
+    cat "${OSC_ERR_LOG}" >&2 || true
+    exit 1
+  fi
+  sleep 2
+done
 log_info "Keystone auth OK"
 
 # ---------------------------------------------------------------------------
@@ -185,37 +194,49 @@ log_info "Connector props: ${CONNECTOR_PROPS}"
 # ---------------------------------------------------------------------------
 log_step "Creating volume attachment"
 
-# Use Cinder v3 attachment API
-# First, initiate the attachment
-ATTACHMENT_ID=$(${OSC} volume attachment create \
-  "${VOLUME_ID}" \
-  --connect \
-  -f value -c id 2>/dev/null || echo "")
+# Get a Keystone token + project ID for direct Cinder API calls.
+# The openstackclient CLI validates the server UUID against Nova, which we
+# don't run, so use the Cinder REST API directly.
+OS_TOKEN=$(${OSC} token issue -f value -c id)
+OS_PROJECT_ID=$(${OSC} token issue -f value -c project_id)
+CINDER_URL="${OS_AUTH_URL%:*}:8776/v3/${OS_PROJECT_ID}"
+
+# Create attachment with connector in one call (no instance required).
+ATTACH_RESP=$(curl -s -X POST "${CINDER_URL}/attachments" \
+  -H "X-Auth-Token: ${OS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -H "OpenStack-API-Version: volume 3.27" \
+  -d "$(cat <<JSON
+{
+  "attachment": {
+    "volume_uuid": "${VOLUME_ID}",
+    "connector": ${CONNECTOR_PROPS}
+  }
+}
+JSON
+)")
+ATTACHMENT_ID=$(echo "${ATTACH_RESP}" | /opt/consumer/.venv/bin/python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print(data.get('attachment', {}).get('id', ''))
+")
 
 if [[ -z "${ATTACHMENT_ID}" ]]; then
-  # Fallback: some versions of openstackclient require different syntax
-  ATTACHMENT_ID=$(${OSC} volume attachment create \
-    "${VOLUME_ID}" \
-    -f value -c id)
+  log_error "Failed to create attachment: ${ATTACH_RESP}"
+  exit 1
 fi
 log_info "Attachment created: ${ATTACHMENT_ID}"
 
-# Update attachment with connector properties
-log_info "Updating attachment with connector properties"
-${OSC} volume attachment update \
-  "${ATTACHMENT_ID}" \
-  --connector "${CONNECTOR_PROPS}"
-
 # Get the attachment details (includes connection_info)
 log_info "Retrieving connection info"
-ATTACH_JSON=$(${OSC} volume attachment show "${ATTACHMENT_ID}" -f json)
-log_info "Attachment details retrieved"
+ATTACH_SHOW=$(curl -s "${CINDER_URL}/attachments/${ATTACHMENT_ID}" \
+  -H "X-Auth-Token: ${OS_TOKEN}" \
+  -H "OpenStack-API-Version: volume 3.27")
 
-# Extract connection_info
-CONN_INFO=$(echo "${ATTACH_JSON}" | /opt/consumer/.venv/bin/python3 -c "
+CONN_INFO=$(echo "${ATTACH_SHOW}" | /opt/consumer/.venv/bin/python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-ci = data.get('connection_info', {})
+ci = data.get('attachment', {}).get('connection_info', {})
 if isinstance(ci, str):
     ci = json.loads(ci)
 print(json.dumps(ci, indent=2))
@@ -284,18 +305,30 @@ print(data.get('target_lun', 0))
       log_info "FC connect: wwpn=${CONN_WWPN} lun=${CONN_LUN}"
 
       # Run agent reconcile first (sets up FC rport + dm + iSCSI underlay)
-      log_info "Running FC agent reconcile"
-      /opt/consumer/.venv/bin/python3 -c "
-import asyncio
+      FC_HOST_ID="$(cat /root/host_id 2>/dev/null || echo "")"
+      if [[ -n "${FC_HOST_ID}" ]]; then
+        log_info "Running FC agent reconcile"
+        /opt/consumer/.venv/bin/python3 -c "
+import httpx
 from strix_fcctl.agent.reconcile import reconcile_once
-from strix_fcctl.agent.config import AgentConfig
-config = AgentConfig(
+from strix_fcctl.agent.config import AgentSettings
+from strix_fcctl.netlink import ApolloNetlinkClient
+settings = AgentSettings(
     gateway_url='http://${GATEWAY_IP}:${GATEWAY_PORT}',
-    host_id='$(cat /root/host_id 2>/dev/null || echo "")',
+    host_id='${FC_HOST_ID}',
     fc_host_num=int(open('/root/fc_host_num').read().strip()),
 )
-asyncio.run(reconcile_once(config))
+client = httpx.Client()
+nl = ApolloNetlinkClient()
+try:
+    reconcile_once(client, nl, settings)
+finally:
+    client.close()
+    nl.close()
 " 2>&1 || log_info "Agent reconcile completed (non-fatal errors may be OK)"
+      else
+        log_info "Skipping FC agent reconcile (host_id unavailable)"
+      fi
 
       # Try os-brick FC connect
       DEVICE_JSON=$(osbrick_connect_fc "${CONN_WWPN}" "${CONN_LUN}" 2>/dev/null || echo '{}')

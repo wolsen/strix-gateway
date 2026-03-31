@@ -296,7 +296,7 @@ setup_iscsi_target() {
   targetcli /backstores/fileio create e2e_lun "${backing_file}" "${lun_size_mb}M" write_back=false
   targetcli /iscsi create "${target_iqn}"
   targetcli "/iscsi/${target_iqn}/tpg1/portals" create 0.0.0.0 "${target_port}" >/dev/null 2>&1 || true
-  targetcli "/iscsi/${target_iqn}/tpg1/luns" create /backstores/fileio/e2e_lun 1
+  targetcli "/iscsi/${target_iqn}/tpg1/luns" create /backstores/fileio/e2e_lun 0
   targetcli "/iscsi/${target_iqn}/tpg1" set attribute \
     authentication=0 demo_mode_write_protect=0 \
     generate_node_acls=1 demo_mode_discovery=1
@@ -328,6 +328,7 @@ start_gateway() {
   local gateway_root="${1:-/root/strix-gateway}"
   local mode="${2:-non-vhost}"
   local vhost_domain="${3:-e2e.test}"
+  local portal_ip="${4:-}"
 
     log_info "Starting Strix Gateway (mode=${mode}) on port ${GATEWAY_PORT}"
 
@@ -341,7 +342,12 @@ start_gateway() {
   local gw_env=(
     "STRIX_SPDK_SOCKET_PATH=${SPDK_SOCK}"
     "STRIX_DATABASE_URL=sqlite+aiosqlite:///./strix_gateway.db"
+    "STRIX_ISCSI_UNDERLAY_LUN_BASE=1"
   )
+
+  if [[ -n "${portal_ip}" ]]; then
+    gw_env+=("STRIX_ISCSI_PORTAL_IP=${portal_ip}")
+  fi
 
   if [[ "${mode}" == "vhost" ]]; then
     gw_env+=(
@@ -383,6 +389,7 @@ apply_topology() {
 setup_ssh_facade() {
   local svc_user="${SVC_USER}"
   local svc_pass="${SVC_PASSWORD}"
+  local subsystem="${2:-default}"
 
   log_info "Setting up SSH facade for IBM SVC compatibility"
   apt-get install -y -qq openssh-server >/dev/null 2>&1
@@ -395,7 +402,7 @@ setup_ssh_facade() {
 
   # Determine path to the shell module
   local gateway_root="${1:-/root/strix-gateway}"
-    local shell_script="${gateway_root}/.venv/bin/python -m strix_gateway.personalities.svc.shell"
+    local shell_script="${gateway_root}/.venv/bin/python -m strix_gateway.personalities.svc.shell --subsystem ${subsystem}"
 
     # E2E runs gateway from /root; allow the unprivileged svc user to traverse
     # the path so ForceCommand can execute the shell module.

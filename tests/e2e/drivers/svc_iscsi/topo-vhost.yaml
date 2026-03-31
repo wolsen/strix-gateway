@@ -11,6 +11,8 @@ arrays:
         replication: false
     endpoints:
       - protocol: iscsi
+        targets:
+          target_iqn: "iqn.2026-03.com.lunacy:strix.e2e.target"
 
 pools:
   - name: gold
