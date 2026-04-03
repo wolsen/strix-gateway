@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Vendor conformance gate.
+#
+# Fails the PR if:
+#   - A personality exists without a vendors.yaml entry
+#   - A declared scenario is missing required fixture files
+#   - matrix.env is out of sync with declared scenarios
+#
+# See docs/testing/vendor_conformance.md for instructions.
+
+name: vendor-conformance
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'strix_gateway/personalities/**'
+      - 'tests/vendors.yaml'
+      - 'tests/e2e/vendors/**'
+      - 'tests/e2e/drivers/**'
+      - 'scripts/validate_vendors.py'
+      - 'scripts/generate_e2e_matrix.py'
+  pull_request:
+    paths:
+      - 'strix_gateway/personalities/**'
+      - 'tests/vendors.yaml'
+      - 'tests/e2e/vendors/**'
+      - 'tests/e2e/drivers/**'
+      - 'scripts/validate_vendors.py'
+      - 'scripts/generate_e2e_matrix.py'
+
+jobs:
+  conformance:
+    name: Vendor conformance check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Validate vendor completeness
+        run: |
+          echo "==> Checking vendor manifest completeness"
+          python scripts/validate_vendors.py
+
+      - name: Check matrix.env is up to date
+        run: |
+          echo "==> Checking matrix.env matches declared scenarios"
+          python scripts/generate_e2e_matrix.py --check
