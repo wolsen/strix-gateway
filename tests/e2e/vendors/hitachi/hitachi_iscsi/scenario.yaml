@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Scenario metadata for vendor conformance system.
+# Consumed by scripts/generate_e2e_matrix.py to produce matrix.env.
+
+driver_dir: hitachi_iscsi
+modes:
+  - non-vhost
+needs_fc: false
+transport: iscsi
+cinder_driver: cinder.volume.drivers.hitachi.hbsd_iscsi.HBSDISCSIDriver

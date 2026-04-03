@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Vendor manifest — source of truth for conformance validation.
+#
+# Fields:
+#   personality_dir:   subdirectory under strix_gateway/personalities/
+#   registry_id:       string passed to personality_registry.register()
+#                      (null if not registered, e.g. generic)
+#   e2e_required:      whether E2E coverage is mandatory
+#   scenarios:         list of E2E scenarios this vendor must have
+#
+# Each scenario name references a directory:
+#   tests/e2e/vendors/<personality_dir>/<name>/
+# which must contain: scenario.yaml, seed.sh
+# The scenario.yaml declares the driver_dir, which must exist under:
+#   tests/e2e/drivers/<driver_dir>/
+# with: topo.yaml, cinder-backend.conf, verify.sh
+#
+# Rules enforced by scripts/validate_vendors.py:
+#   - Every personality dir with app.py must appear here
+#   - Every e2e_required vendor must have >= 1 scenario
+#   - All scenario and driver files must exist on disk
+#
+# Matrix generation:  scripts/generate_e2e_matrix.py
+# CI validation:      .github/workflows/vendor-conformance.yml
+
+vendors:
+  - personality_dir: svc
+    registry_id: ibm_svc
+    e2e_required: true
+    scenarios:
+      - name: svc_iscsi
+        description: "IBM SVC iSCSI transport"
+      - name: svc_fc
+        description: "IBM SVC Fibre Channel transport"
+
+  - personality_dir: hitachi
+    registry_id: hitachi
+    e2e_required: true
+    scenarios:
+      - name: hitachi_iscsi
+        description: "Hitachi VSP iSCSI transport via HBSD driver"
+
+  - personality_dir: hpe3par
+    registry_id: hpe_3par
+    e2e_required: true
+    scenarios:
+      - name: hpe3par_iscsi
+        description: "HPE 3PAR iSCSI transport via WSAPI"
+
+  - personality_dir: generic
+    registry_id: null
+    e2e_required: false
+    scenarios: []

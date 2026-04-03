@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Canonical, Ltd.
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Scenario metadata for vendor conformance system.
+# Consumed by scripts/generate_e2e_matrix.py to produce matrix.env.
+
+driver_dir: svc_fc
+modes:
+  - non-vhost
+  - vhost
+needs_fc: true
+transport: fc
+cinder_driver: cinder.volume.drivers.ibm.storwize_svc.storwize_svc_fc.StorwizeSVCFCDriver
