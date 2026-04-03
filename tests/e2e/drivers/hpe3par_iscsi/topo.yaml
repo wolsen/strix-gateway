@@ -1,0 +1,25 @@
+# Strix Gateway topology: HPE 3PAR iSCSI E2E test (non-vhost)
+#
+# The HPE 3PAR Cinder driver connects to the gateway's WSAPI REST endpoint
+# at http://${GATEWAY_IP}:${GATEWAY_PORT}/api/v1  (no SSH facade needed for
+# the basic volume lifecycle path).
+arrays:
+  - name: default
+    vendor: hpe_3par
+    profile:
+      model: "3PAR StoreServ"
+      version: "3.3.1"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: false
+    endpoints:
+      - protocol: iscsi
+        targets:
+          target_iqn: "iqn.2026-03.com.lunacy:strix.e2e.target"
+
+pools:
+  - name: gold
+    array: default
+    backend: malloc
+    size_gb: 100

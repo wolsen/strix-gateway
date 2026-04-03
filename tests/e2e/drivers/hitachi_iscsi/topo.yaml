@@ -1,0 +1,28 @@
+# Strix Gateway topology: Hitachi VSP iSCSI E2E test (non-vhost)
+#
+# The Hitachi HBSD Cinder driver connects to the gateway's Configuration
+# Manager REST API at /ConfigurationManager/v1/objects/.
+#
+# storage_device_id in the array profile must match hitachi_storage_id in
+# the Cinder backend conf so that URL paths resolve correctly.
+arrays:
+  - name: default
+    vendor: hitachi
+    profile:
+      model: "VSP G900"
+      version: "93-06-01-80/00"
+      storage_device_id: "000000"
+      features:
+        thin_provisioning: true
+        snapshots: true
+        replication: false
+    endpoints:
+      - protocol: iscsi
+        targets:
+          target_iqn: "iqn.2026-03.com.lunacy:strix.e2e.target"
+
+pools:
+  - name: gold
+    array: default
+    backend: malloc
+    size_gb: 100
