@@ -291,6 +291,7 @@ EOF
     -e "s|\${GATEWAY_IP}|${gateway_ip}|g" \
     -e "s|\${GATEWAY_SSH_PORT}|${gateway_ssh_port}|g" \
     -e "s|\${SVC_PASSWORD}|${svc_password}|g" \
+    -e "s|\${GATEWAY_PORT}|${GATEWAY_PORT:-8080}|g" \
     "${backend_conf_file}" >> "${CINDER_CONF}"
 
   log_info "Cinder configured with backend '${backend_name}'"

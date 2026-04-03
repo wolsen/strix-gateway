@@ -17,7 +17,7 @@
 #   9. Cleanup: disconnect, delete attachment, delete volume
 #
 # Environment variables (required):
-#   DRIVER_NAME     svc_iscsi | svc_fc
+#   DRIVER_NAME     svc_iscsi | svc_fc | hitachi_iscsi | hpe3par_iscsi
 #   VOLUME_TYPE     Cinder volume type name
 #   GATEWAY_IP      IP of the gateway VM
 #   GATEWAY_PORT    Port of the gateway REST API
@@ -83,7 +83,7 @@ cleanup() {
   if [[ -n "${DEVICE_PATH}" ]]; then
     log_info "Disconnecting os-brick"
     case "${DRIVER_NAME}" in
-      svc_iscsi)
+      svc_iscsi | hitachi_iscsi | hpe3par_iscsi)
         osbrick_disconnect_iscsi \
           "${GATEWAY_IP}:3260" "${TARGET_IQN}" "0" 2>/dev/null || true
         ;;
@@ -149,7 +149,7 @@ log_step "Building connector properties"
 ISCSI_IQN="$(get_iscsi_iqn)"
 
 case "${DRIVER_NAME}" in
-  svc_iscsi)
+  svc_iscsi | hitachi_iscsi | hpe3par_iscsi)
     CONNECTOR_PROPS=$(cat <<JSON
 {
   "initiator": "${ISCSI_IQN}",
@@ -249,7 +249,7 @@ log_info "Connection info: ${CONN_INFO}"
 log_step "Connecting via os-brick"
 
 case "${DRIVER_NAME}" in
-  svc_iscsi)
+  svc_iscsi | hitachi_iscsi | hpe3par_iscsi)
     DRIVER_TYPE=$(echo "${CONN_INFO}" | /opt/consumer/.venv/bin/python3 -c "
 import json, sys
 ci = json.load(sys.stdin)
@@ -388,8 +388,8 @@ if [[ -f "${VERIFY_SCRIPT}" ]]; then
   # Source driver-specific verification lib
   source "${VERIFY_SCRIPT}"
   case "${DRIVER_NAME}" in
-    svc_iscsi) verify_iscsi ;;
-    svc_fc)    verify_fc ;;
+    svc_iscsi | hitachi_iscsi | hpe3par_iscsi) verify_iscsi ;;
+    svc_fc)                                    verify_fc ;;
   esac
 fi
 
